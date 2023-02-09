@@ -36,48 +36,73 @@ def get_corners_manually(img):
     cols = int(input("Enter the number of columns of the chessboard seen: "))
     cv.waitKey(0)
     cv.destroyAllWindows()
-    corners = interpolate_chessboard_corners(manual_corners, rows, cols)
-    print(corners)
+    corners = interpolate_chessboard_corners(manual_corners, rows, cols, img)
+    #print(corners)
     manual_corners = []
     # draw the corners on the image
-    for corner in corners:
-        cv.circle(img, (int(corner[0]), int(corner[1])), 5, (0, 0, 255), -1)
+    #for corner in corners:
+    #   cv.circle(img, (int(corner[0]), int(corner[1])), 5, (0, 0, 255), -1)
 
-    cv.imshow("Image", img)
+    #cv.imshow("Image", img)
     cv.waitKey(0)
     cv.destroyAllWindows()
     return corners
 
 
-def interpolate_chessboard_corners(corners, rows, cols):
+def interpolate_chessboard_corners(corners, rows, cols, img):
     # interpolate the corners of the chessboard
     # corners: list of 4 corners of the chessboard
     # rows: number of rows of the chessboard
     # cols: number of columns of the chessboard
     # returns: list of corners of the chessboard
 
+    tl, tr, br, bl = corners
+    rect = np.zeros((4, 2), dtype = "float32")
+    rect[0] = tl
+    rect[1] = tr
+    rect[2] = br
+    rect[3] = bl
+    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+    maxWidth = max(int(widthA), int(widthB))
+
+    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+    maxHeight = max(int(heightA), int(heightB))
+
+    dst = np.array([
+		[0, 0],
+		[maxWidth - 1, 0],
+		[maxWidth - 1, maxHeight - 1],
+		[0, maxHeight - 1]], dtype = "float32")
+
+    M = cv.getPerspectiveTransform(rect, dst)
+    warped = cv.warpPerspective(img, M, (maxWidth, maxHeight))
+    cv.imshow('original', img)
+    cv.imshow('warped', warped)
+    cv.waitKey(0)
     # get the coordinates of the four corners in the format [x, y] and dtype float32
-    p1 = np.array(corners[0], dtype=np.float32)
-    p2 = np.array(corners[1], dtype=np.float32)
-    p3 = np.array(corners[2], dtype=np.float32)
-    p4 = np.array(corners[3], dtype=np.float32)
+    #p1 = np.array(corners[0], dtype=np.float32)
+    #p2 = np.array(corners[1], dtype=np.float32)
+    #p3 = np.array(corners[2], dtype=np.float32)
+    #p4 = np.array(corners[3], dtype=np.float32)
 
     # Create a matrix of points representing the chessboard
-    points = np.zeros((rows * cols, 2), dtype=np.float32)
-    for r in range(rows):
-        for c in range(cols):
-            points[r * cols + c] = [c * 100, r * 100]
+    #points = np.zeros((rows * cols, 2), dtype=np.float32)
+    #for r in range(rows):
+    #    for c in range(cols):
+    #        points[r * cols + c] = [c * 100, r * 100]
 
     # Calculate the perspective transformation matrix
-    transform_matrix = cv.getPerspectiveTransform(np.array([p1, p2, p3, p4]), points)
+    #transform_matrix = cv.getPerspectiveTransform(np.array([p1, p2, p3, p4]), points)
 
     # Apply the transformation matrix to the matrix of points
-    transformed_points = cv.perspectiveTransform(points.reshape(1, -1, 2), transform_matrix)
+    #transformed_points = cv.perspectiveTransform(points.reshape(1, -1, 2), transform_matrix)
 
     # Reshape the matrix of points to the correct format
-    transformed_points = transformed_points.reshape(-1, 2)
+    #transformed_points = transformed_points.reshape(-1, 2)
 
-    return transformed_points
+    return warped
 
     # linearly interpolate the corners of the chessboard
     # interpolate the top row
@@ -116,7 +141,9 @@ objp[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
 objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
 # read images from folder relative to the main.py file
-images = glob.glob('ass1/images/webcam/*.jpg')
+images = glob.glob('C:/Users/nikol/OneDrive/Documents/School/Computer Vision/2023/Assignments/Assignment 1/infocv/ass1/images/webcam/*.jpg')
+print(len(images))
+img_counter = 0
 for fname in images:
     img = cv.imread(fname)
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -135,12 +162,24 @@ for fname in images:
         # cv.imshow('img', img)
         # cv.waitKey(0)
     else:
-        corners = get_corners_manually(img)
+        img_warped = get_corners_manually(img)
+        gray = cv.cvtColor(img_warped, cv.COLOR_BGR2GRAY)
+        ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
+        if ret == True:
+            objpoints.append(objp)
+            corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
+            imgpoints.append(corners2)
+            # Draw and display the corners
+            cv.drawChessboardCorners(img_warped, (ROWS, COLS), corners2, ret)
+            plt.figure(figsize = (20,15))
+            cv.imshow('img', img_warped)
+    img_counter += 1
+    print(img_counter)
+    
 
 
 
 # cv.destroyAllWindows()
-
 ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 img = cv.imread('ass1/images/webcam/00.jpg')
 h,  w = img.shape[:2]
