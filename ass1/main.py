@@ -83,20 +83,51 @@ def warp_image_interpolate_chessboard_corners(corners, rows, cols, img):
 
 #Manually generate chessboard points using user input corners
 def interpolate_chessboard_corners(corners, rows, cols, img):
-    #Using min X, max X and minY maxY we calculate the location for each point
+    #Defining corner order
     tl, tr, br, bl = corners
-    x_coord = np.linspace(tl[0], tr[0], cols)
-    y_coord = np.linspace(tl[1], bl[1], rows)
-    rect = np.zeros((rows*cols, 2), dtype = "float32")
+    #Transforming the corner array into the type the function getPerspective has
+    points = np.zeros((4, 2), dtype = "float32")
+    points[0] = tl
+    points[1] = tr
+    points[2] = br
+    points[3] = bl
+
+    #Calculating width and heigth of the image inside the boundary of the 4 corners
+    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+    maxWidth = max(int(widthA), int(widthB))
+
+    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+    maxHeight = max(int(heightA), int(heightB))
+
+    #mapping 4 new corners from the new heigth and width
+    dst = np.array([
+		[0, 0],
+		[maxWidth - 1, 0],
+		[maxWidth - 1, maxHeight - 1],
+		[0, maxHeight - 1]], dtype = "float32")
     
-    #Converting points into an array type that fits the input for subPix function type
+    #linearly expanding all the points
+    x_coord = np.linspace(dst[0][0], dst[1][0], cols)
+    y_coord = np.linspace(dst[0][1], dst[3][1], rows)
+
+    #making a holder array that holds all points
+    rect = np.zeros((rows*cols, 2), dtype = "float32")
     counter = 0
     for j in range(cols):
         for k in range(rows):
             rect[counter] = [x_coord[j],y_coord[k]]
             counter += 1
+    #Compute perspective transform from unwarped points to warped points
+    M = cv.getPerspectiveTransform(dst, points)
 
-    return rect
+    # Apply the transformation matrix to the array of all points
+    transformed_points = cv.perspectiveTransform(rect.reshape(1, -1, 2), M)
+    # Reshape the matrix of points to the correct format
+    transformed_points = transformed_points.reshape(-1, 2)
+
+    return transformed_points
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
