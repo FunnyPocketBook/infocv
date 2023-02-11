@@ -48,6 +48,7 @@ def get_corners_manually(img):
     cv.destroyAllWindows()
     return corners
 
+#OLD - NOT FOR USE
 #Warp image dimensions to fit the screen in correct dimension
 def warp_image_interpolate_chessboard_corners(corners, rows, cols, img):
     #Four points map to calculate width and heigth of the image
@@ -80,6 +81,82 @@ def warp_image_interpolate_chessboard_corners(corners, rows, cols, img):
     cv.waitKey(0)
 
     return warped
+
+def save_camera_config():
+    #todo
+    #Save to file:
+    #camMatrix
+    #distCoeff
+    #rotation vectors
+    #translation vectors
+    return True
+
+def loag_camera_config():
+    #todo
+    #Load from file:
+    #camMatrix
+    #distCoeff
+    #rotation vectors
+    #translation vectors
+    return True
+
+def draw_world_axis(rVecs, tVecs, cameraMatrix, d, img):
+    #Create array that will hold four 3D points
+    size = 1
+    points = np.float32([[0,0,0],[size * CELL_LENGTH,0,0],[0,size * CELL_LENGTH,0],[0,0,size * CELL_LENGTH]])
+                                                                                                                                        #^might have to be negative
+    #Project 3D points to 2D image
+    imagePoints = cv.projectPoints(points, rVecs, tVecs, cameraMatrix, d)
+    #To do: think of better way to do this conversion
+    pointOne = imagePoints[0][0][0]
+    pointOne = (int(pointOne[0]),int(pointOne[1]))
+
+    pointTwo = imagePoints[0][1][0]
+    pointTwo = (int(pointTwo[0]),int(pointTwo[1]))
+
+    pointThree = imagePoints[0][2][0]
+    pointThree = (int(pointThree[0]),int(pointThree[1]))
+
+    pointFour = imagePoints[0][3][0]
+    pointFour = (int(pointFour[0]),int(pointFour[1]))
+	#DRAWING
+	#Draws XYZ lines in different colors and thickness of lines
+    cv.line(img, pointOne, pointTwo, (255, 0, 0), 3)
+    cv.line(img, pointOne, pointThree, (0, 255, 0), 3)
+    cv.line(img, pointOne, pointFour, (0, 0, 255), 3)
+    return img
+
+def draw_cube(rVecs, tVecs, cameraMatrix, d, img):
+    size = 1
+    points = np.float32([[0,0,0], [0,size*CELL_LENGTH,0], [size*CELL_LENGTH,size*CELL_LENGTH,0], [size*CELL_LENGTH,0,0], #Bottom 4 points 
+    [0,0,size*CELL_LENGTH],[0,size*CELL_LENGTH,size*CELL_LENGTH],[size*CELL_LENGTH,size*CELL_LENGTH,size*CELL_LENGTH],[size*CELL_LENGTH,0,size*CELL_LENGTH] ]) #Top 4 points -> Z might  have to be negative
+
+    #3D points projected to 2D coordinates
+    imagePoints = cv.projectPoints(points, rVecs, tVecs, cameraMatrix, d)
+    
+    #To do rewrite points into a tuple that has 2 ints
+    #Bottom square
+    cv.line(img, imagePoints[0], imagePoints[1], (255, 0, 0), 3)
+    cv.line(img, imagePoints[1], imagePoints[2], (255, 0, 0), 3)
+    cv.line(img, imagePoints[2], imagePoints[3], (255, 0, 0), 3)
+    cv.line(img, imagePoints[3], imagePoints[0], (255, 0, 0), 3)
+    #Top square
+    cv.line(img, imagePoints[4], imagePoints[5], (255, 0, 0), 3)
+    cv.line(img, imagePoints[5], imagePoints[6], (255, 0, 0), 3)
+    cv.line(img, imagePoints[6], imagePoints[7], (255, 0, 0), 3)
+    cv.line(img, imagePoints[7], imagePoints[4], (255, 0, 0), 3)
+    #Sides
+    cv.line(img, imagePoints[1], imagePoints[4], (255, 0, 0), 3)
+    cv.line(img, imagePoints[2], imagePoints[5], (255, 0, 0), 3)
+    cv.line(img, imagePoints[3], imagePoints[6], (255, 0, 0), 3)
+    cv.line(img, imagePoints[4], imagePoints[7], (255, 0, 0), 3)
+
+    #From documentation ->
+    #Draw bottom square solid
+    #cv.drawContours(img, [imagePoints[:4]],-1,(0,255,0),-3)
+    #Draw top layer in red color
+    #img = cv.drawContours(img, [imagePoints[4:]],-1,(0,0,255),3)
+    return img
 
 #Manually generate chessboard points using user input corners
 def interpolate_chessboard_corners(corners, rows, cols, img):
@@ -178,7 +255,7 @@ for fname in images:
 
 # cv.destroyAllWindows()
 ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-img = cv.imread('ass1/images/webcam/00.jpg')
+img = cv.imread('ass1/images/webcam/IM1.jpg')
 h,  w = img.shape[:2]
 newcameramtx, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
 # undistort
@@ -187,7 +264,9 @@ dst = cv.remap(img, mapx, mapy, cv.INTER_LINEAR)
 # crop the image
 x, y, w, h = roi
 dst = dst[y:y+h, x:x+w]
-cv.imwrite('calibresult.png', dst)
+ret,rvecs, tvecs = cv.solvePnP(objpoints[0], imgpoints[0], mtx, dist)
+img = draw_world_axis(rvecs,tvecs,mtx,dist,img)
+cv.imwrite('calibresult.png', img)
 
 
 
