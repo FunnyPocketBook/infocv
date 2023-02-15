@@ -23,11 +23,13 @@ def click_event(event, x, y, flags, params):
 def get_corners_manually(img):
     print("Click on the four corners of the chessboard in the following order: top left, top right, bottom right, bottom left. When done, press any key to continue.")
     global manual_corners
-    cv.imshow('image', img)
+    #In case the text  and text-color messes with the corner interpolation
+    visual_image = img
+    cv.imshow('image', visual_image)
     cv.setMouseCallback('image', click_event)
     cv.waitKey(0)
     cv.destroyAllWindows()
-    cv.imshow('image', img)
+    cv.imshow('image', visual_image)
     if len(manual_corners) != 4:
         print("The number of corners is not 4. Please try again.")
         manual_corners = []
@@ -192,9 +194,9 @@ def interpolate_chessboard_corners(corners, rows, cols, img):
     #making a holder array that holds all points
     rect = np.zeros((rows*cols, 2), dtype = "float32")
     counter = 0
-    for j in range(cols):
-        for k in range(rows):
-            rect[counter] = [x_coord[j],y_coord[k]]
+    for j in range(rows):
+        for k in range(cols):
+            rect[counter] = [x_coord[k],y_coord[j]]
             counter += 1
     #Compute perspective transform from unwarped points to warped points
     M = cv.getPerspectiveTransform(dst, points)
@@ -203,7 +205,6 @@ def interpolate_chessboard_corners(corners, rows, cols, img):
     transformed_points = cv.perspectiveTransform(rect.reshape(1, -1, 2), M)
     # Reshape the matrix of points to the correct format
     transformed_points = transformed_points.reshape(-1, 2)
-
     return transformed_points
 
 # termination criteria
@@ -230,19 +231,19 @@ for fname in images:
         imgpoints.append(corners2)
         # Draw and display the corners
         cv.drawChessboardCorners(img, (ROWS, COLS), corners2, ret)
-        plt.figure(figsize = (20,15))
+        #plt.figure(figsize = (20,15))
         # plt.imshow(img)
         # plt.show()
-        # cv.imshow('img', img)
-        # cv.waitKey(0)
+        cv.imshow('img', img)
+        cv.waitKey(0)
     else:
         manual_corners = get_corners_manually(img)
-        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        #gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         objpoints.append(objp)
         corners2 = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), criteria)
         imgpoints.append(corners2)
         # Draw and display the corners
-        cv.drawChessboardCorners(img, (ROWS, COLS), corners2, ret)
+        cv.drawChessboardCorners(img, (ROWS, COLS), corners2, True)
         plt.figure(figsize = (20,15))
         cv.imshow('img', img)
         cv.waitKey(0)
