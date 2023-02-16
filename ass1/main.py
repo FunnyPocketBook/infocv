@@ -1,26 +1,27 @@
 import numpy as np
 import cv2 as cv
 import glob
-import matplotlib.pyplot as plt
 import os
+from config import Config
 
-CELL_LENGTH = 21.34
-ROWS = 9
-COLS = 6
-CAMERA_CONFIG_PATH = "camera_config_all.npz"
-TRAINING_IMAGES_AMNT = 0 # Set to 0 to use all images that are found in IMAGE_PATH, set to a number to use that many images
-IMAGE_PATH = "ass1/images/"
-SHOW_IMAGES = False # Set True to show the images of the found corners during training, False to not show images
+config = Config()
+
 CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-FRAME_RATE = 24 # set frame rate of the webcam
-
-VIDEO = False # Set True to use webcam, False to use images
+COLS = config.get("chessboard", "cols")
+ROWS = config.get("chessboard", "rows")
+CELL_LENGTH = config.get("chessboard", "cell_length")
+CAMERA_CONFIG_PATH = config.get("calibration", "calibration_file")
+IMAGE_PATH = config.get("calibration", "image_path")
+TRAINING_IMAGES_AMNT = config.get("calibration", "training_images_amnt")
+FPS = config.get("webcam", "fps")
+USE_WEBCAM = config.get("webcam", "use_webcam")
 
 
 OBJP = np.zeros((COLS * ROWS, 3), np.float32)
 OBJP[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
 
 class Color:
+    """Color constants in BGR format"""
     RED = (0, 0, 255)
     GREEN = (0, 255, 0)
     BLUE = (255, 0, 0)
@@ -31,10 +32,23 @@ class Color:
     CYAN = (255, 255, 0)
 
     
-def get_corners_manually(img):
+def get_corners_manually(img: np.ndarray) -> np.ndarray:
+    """Get the corners of the chessboard manually by clicking on the corners of the chessboard.
+    
+    Parameters
+    ----------
+    img : np.ndarray
+        The image of the chessboard.
+
+    Returns
+    -------
+    corners : np.ndarray
+        The corners of the chessboard.
+    """
     print("Click on the four corners of the chessboard. When done, press any key to continue.")
     manual_corners = []
     def click_event(event, x, y, flags, params):
+        """Callback function for the mouse click event. Adds the clicked point to the list of corners and displays the point on the image."""
         if event == cv.EVENT_LBUTTONDOWN:
             print(x, ' ', y)
             manual_corners.append([x, y])
@@ -42,7 +56,6 @@ def get_corners_manually(img):
             strXY = str(x) + ', ' + str(y)
             cv.putText(visual_image, strXY, (x, y), font, .5, (255, 255, 0), 2)
             cv.imshow('Manual corners', visual_image)
-    #In case the text  and text-color messes with the corner interpolation
     visual_image = img.copy()
     cv.imshow('Manual corners', visual_image)
     cv.setMouseCallback('Manual corners', click_event)
@@ -55,86 +68,123 @@ def get_corners_manually(img):
     cv.destroyAllWindows()
     return corners
 
-#OLD - NOT FOR USE
-# #Warp image dimensions to fit the screen in correct dimension
-# def warp_image_interpolate_chessboard_corners(corners, rows, cols, img):
-#     #Four points map to calculate width and heigth of the image
-#     tl, tr, br, bl = corners
-#     rect = np.zeros((4, 2), dtype = "float32")
-#     rect[0] = tl
-#     rect[1] = tr
-#     rect[2] = br
-#     rect[3] = bl
-#     widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-#     widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-#     maxWidth = max(int(widthA), int(widthB))
-
-#     heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
-#     heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
-#     maxHeight = max(int(heightA), int(heightB))
-
-#     #mapping
-#     dst = np.array([
-# 		[0, 0],
-# 		[maxWidth - 1, 0],
-# 		[maxWidth - 1, maxHeight - 1],
-# 		[0, maxHeight - 1]], dtype = "float32")
-#     #Compute perspective transform
-#     M = cv.getPerspectiveTransform(rect, dst)
-#     #apply pespective transform to the entire image to warp it
-#     warped = cv.warpPerspective(img, M, (maxWidth, maxHeight))
-#     cv.imshow('original', img)
-#     cv.imshow('warped', warped)
-#     cv.waitKey(0)
-
-#     return warped
 
 def save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, file=CAMERA_CONFIG_PATH):
+    """Save the camera configuration to a file.
+    
+    Parameters
+    ----------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    optimal_camera_matrix : np.ndarray
+        The optimal camera matrix.
+    file : str, optional
+        The path to the file, by default CAMERA_CONFIG_PATH (set in config.yml)
+    """
     np.savez(file, mtx=mtx, dist=dist, rvecs=rvecs, tvecs=tvecs, optimal_camera_matrix=optimal_camera_matrix)
     
 
 def load_camera_config(file=CAMERA_CONFIG_PATH):
+    """Load the camera configuration from a file.
+
+    Parameters
+    ----------
+    file : str, optional
+        The path to the file, by default CAMERA_CONFIG_PATH (set in config.yml)
+
+    Returns
+    -------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    opt_cam_mtx : np.ndarray
+        The optimal camera matrix.
+    """
     with np.load(file) as X:
         mtx, dist, rvecs, tvecs, optimal_camera_matrix= [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs', 'optimal_camera_matrix')]
     return mtx, dist, rvecs, tvecs, optimal_camera_matrix
 
-def draw_world_axis(img, rVecs, tVecs, cameraMatrix, d, size=1):
-    #Create array that will hold four 3D points
+def draw_world_axis(img, rVecs, tVecs, cameraMatrix, dist, size=1):
+    """Draws the world axis on the image.
+    
+    Parameters
+    ----------
+    img : np.ndarray
+        The image to draw the axis on.
+    rVecs : np.ndarray
+        The rotation vectors.
+    tVecs : np.ndarray
+        The translation vectors.
+    cameraMatrix : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    size : int, optional
+        The size of the axis, by default 1
+        
+    Returns
+    -------
+    img : np.ndarray
+        The image with the axis drawn on it.
+    """
     points = np.float32([[0,0,0],[size * CELL_LENGTH,0,0],[0,size * CELL_LENGTH,0],[0,0,-size * CELL_LENGTH]])
-                                                                                                                                        #^might have to be negative
-    #Project 3D points to 2D image
-    imgpts, jac = cv.projectPoints(points, rVecs, tVecs, cameraMatrix, d)
+    imgpts, jac = cv.projectPoints(points, rVecs, tVecs, cameraMatrix, dist)
     point_one = tuple(map(int, imgpts[0].ravel()))
     point_two = tuple(map(int, imgpts[1].ravel()))
     point_three = tuple(map(int, imgpts[2].ravel()))
     point_four = tuple(map(int, imgpts[3].ravel()))
     
-	#Draws XYZ lines in different colors and thickness of lines
     cv.line(img, point_one, point_two, Color.RED, 3)
     cv.line(img, point_one, point_three, Color.GREEN, 3)
     cv.line(img, point_one, point_four, Color.BLUE, 3)
     return img
 
-def draw_cube(img, rVecs, tVecs, cameraMatrix, d, size=1):
-    # todo: image 29, the cube doesn't follow the z-axis and is slightly off
+def draw_cube(img, rvecs, tvecs, cam_mtx, dist, size=1):
+    """Draws a cube on the image.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The image to draw the cube on.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    cam_mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    size : int, optional
+        The size of the cube, by default 1
+
+    Returns
+    -------
+    img : np.ndarray
+        The image with the cube drawn on it.
+    """
     points = np.float32([[0,0,0], [0,size*CELL_LENGTH,0], [size*CELL_LENGTH,size*CELL_LENGTH,0], [size*CELL_LENGTH,0,0], #Bottom 4 points 
     [0,0,-size*CELL_LENGTH],[0,size*CELL_LENGTH,-size*CELL_LENGTH],[size*CELL_LENGTH,size*CELL_LENGTH,-size*CELL_LENGTH],[size*CELL_LENGTH,0,-size*CELL_LENGTH] ]) #Top 4 points -> Z might  have to be negative
     #3D points projected to 2D coordinates
-    imgpts, jac = cv.projectPoints(points, rVecs, tVecs, cameraMatrix, d)
+    points, jac = cv.projectPoints(points, rvecs, tvecs, cam_mtx, dist)
 
-    points = []
-    for i in range(0, 8):
-        points.append(tuple(map(int, imgpts[i].ravel())))
-
-
+    points = [tuple(map(int, points[i].ravel())) for i in range(0, 8)]
     colors = {
         "bottom": Color.CYAN,
         "top": Color.CYAN,
         "sides": Color.CYAN
     }
-
     thiccness = 1
-
     groups = [
         {"points": points[:4], "color": colors["bottom"]},
         {"points": [points[0], points[4]], "color": colors["sides"]},
@@ -147,36 +197,44 @@ def draw_cube(img, rVecs, tVecs, cameraMatrix, d, size=1):
     for group in groups:
         for j in range(len(group["points"])):
             cv.line(img, group["points"][j], group["points"][(j+1)%len(group["points"])], group["color"], thiccness)
-
     return img
 
 
-#Manually generate chessboard points using user input corners
 def interpolate_chessboard_corners(corners, rows, cols):
-    #Defining corner order
-    tl, tr, br, bl = corners
-    #Transforming the corner array into the type the function getPerspective has
-    points = np.zeros((4, 2), dtype = "float32")
-    points[0] = tl
-    points[1] = tr
-    points[2] = br
-    points[3] = bl
+    """Interpolates the chessboard corners.
 
-    #Calculating width and heigth of the image inside the boundary of the 4 corners
-    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-    maxWidth = max(int(widthA), int(widthB))
+    Parameters
+    ----------
+    corners : np.ndarray
+        The corners of the chessboard.
+    rows : int
+        The number of rows in the chessboard.
+    cols : int
+        The number of columns in the chessboard.
 
-    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
-    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
-    maxHeight = max(int(heightA), int(heightB))
+    Returns
+    -------
+    np.ndarray
+        The interpolated corners.
+    """
+    tl, tr, br, bl = [np.array(corner) for corner in corners] # top left, top right, bottom right, bottom left
+    points = np.array([tl, tr, br, bl], dtype = "float32")
+    
+    width_a = np.linalg.norm(br - bl)
+    width_b = np.linalg.norm(tr - tl)
+    max_width = int(max(width_a, width_b))
+
+    height_a = np.linalg.norm(tr - br)
+    height_b = np.linalg.norm(tl - bl)
+    max_height = int(max(height_a, height_b))
 
     #mapping 4 new corners from the new heigth and width
     dst = np.array([
 		[0, 0],
-		[maxWidth - 1, 0],
-		[maxWidth - 1, maxHeight - 1],
-		[0, maxHeight - 1]], dtype = "float32")
+		[max_width - 1, 0],
+		[max_width - 1, max_height - 1],
+		[0, max_height - 1]
+        ], dtype = "float32")
     
     #linearly expanding all the points
     x_coord = np.linspace(dst[0][0], dst[1][0], rows)
@@ -198,9 +256,18 @@ def interpolate_chessboard_corners(corners, rows, cols):
 
 
 def preprocess_image(img):
-    #todo: play around with these parameters
-    # not sure if this is even necessary...
-    # although I just found an image where this function makes a difference
+    """Preprocesses the image. This includes converting it to grayscale, thresholding it, dilating it and sharpening the edges.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The image to preprocess.
+
+    Returns
+    -------
+    img : np.ndarray
+        The preprocessed image.
+    """
     img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     img = cv.threshold(img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[1]
     kernel = np.ones((1, 1), np.uint8)
@@ -208,66 +275,104 @@ def preprocess_image(img):
     # sharpen the edges of the image
     kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
     img = cv.filter2D(img, -1, kernel)
-    # cv.imshow("preprocessed", img)
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
+    if config.get("verbose"):
+        cv.imshow("preprocessed", img)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
     return img
 
 
 def train_camera():
-    # Arrays to store object points and image points from all the images.
-    object_points = [] # 3d point in real world space
-    image_points = [] # 2d points in image plane.
-    # read images from folder relative to the main.py file
+    """Trains the camera using the images in the IMAGE_PATH folder.
+    
+    Returns
+    -------
+    object_points : list
+        The object points in real world space.
+    image_points : list
+        The image points in image space.
+    shape : tuple
+        The shape of the images.
+    """
+    object_points = []
+    image_points = []
     images = glob.glob(IMAGE_PATH + '*.jpg')
     if len(images) == 0:
-        print("No images found in " + IMAGE_PATH)
+        print(f"No images found in '{os.path.abspath(IMAGE_PATH)}'! Exiting...")
         exit()
     for i, fname in enumerate(images):
         if TRAINING_IMAGES_AMNT != 0 and i >= TRAINING_IMAGES_AMNT:
             break
-        print(f"Processing image {i}...")
+        print(f"Processing image {fname}...")
         img = cv.imread(fname)
         ret, corners, gray = find_chessboard_corners(img)
         object_points.append(OBJP)
         image_points.append(corners)
-    return object_points, image_points, gray
+    return object_points, image_points, gray.shape
 
 
 def find_chessboard_corners(img, camera=False):
+    """Finds the chessboard corners in the image. It tries to find the corners automatically, but if that fails, it asks the user to manually select the corners.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        The image to find the corners in.
+    camera : bool, optional
+        Whether the image is from the camera or not, by default False. If it is from the camera, it will not ask the user to manually select the corners.
+
+    Returns
+    -------
+    ret : bool
+        Whether the corners were found or not.
+    corners : np.ndarray
+        The corners of the chessboard.
+    gray : np.ndarray
+        The grayscale image.
+    """
     gray = preprocess_image(img)
-    # gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
-    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-    # Find the chess board corners
     ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
-    # If found, add object points, image points (after refining them)
     if ret == True:
-        corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
-        if SHOW_IMAGES:
-            cv.drawChessboardCorners(img, (ROWS, COLS), corners2, ret)
+        corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
+        if config.get("verbose"):
+            cv.drawChessboardCorners(img, (ROWS, COLS), corners, ret)
             cv.imshow('img', img)
             cv.waitKey(0)
             cv.destroyAllWindows()
-        return True, corners2, gray
+        return True, corners, gray
     elif not camera:
         manual_corners = get_corners_manually(img)
-        corners2 = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
-        if SHOW_IMAGES:
-            # Draw and display the corners
-            cv.drawChessboardCorners(img, (ROWS, COLS), corners2, True)
+        corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
+        if config.get("verbose"):
+            cv.drawChessboardCorners(img, (ROWS, COLS), corners, True)
             cv.imshow('img', img)
             cv.waitKey(0)
             cv.destroyAllWindows()
-    return False, corners2, gray
+        return True, corners, gray
+    return False, corners, gray
 
 
 def calibrate_camera():
-    # check if camera calibration file exists
+    """Calibrates the camera and saves the calibration data to a file. If the file already exists, it will load the calibration data from the file.
+    
+    Returns
+    -------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    optimal_camera_matrix : np.ndarray
+        The optimal camera matrix.
+    """
     if not os.path.isfile(CAMERA_CONFIG_PATH):
         print('Calibrating camera...')
-        objpoints, imgpoints, gray = train_camera()
-        ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-        h,  w = gray.shape[:2]
+        objpoints, imgpoints, img_shape = train_camera()
+        ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, img_shape[::-1], None, None)
+        h,  w = img_shape[:2]
         optimal_camera_matrix, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
         save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
         return mtx, dist, rvecs, tvecs, optimal_camera_matrix
@@ -275,24 +380,37 @@ def calibrate_camera():
         return load_camera_config()
 
 def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
+    """Opens the webcam and draws the cube on the chessboard in the video feed. It also saves the video to a file.
+    
+    Parameters
+    ----------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    optimal_camera_matrix : np.ndarray
+        The optimal camera matrix.
+    """
     # Inspired from here https://github.com/pavithran-s/Camera_Calibaration/blob/master/draw_cube.ipynb
     print("Opening webcam...")
-    webcam = cv.VideoCapture(1)
+    webcam = cv.VideoCapture(0, cv.CAP_DSHOW)
     if webcam.isOpened(): 
         print("Webcam opened")
     else:
-        print("Unable to read camera feed")
+        print("Unable to read camera feed. Exiting...")
+        exit()
     width = int(webcam.get(3))
     height = int(webcam.get(4))
-    out = cv.VideoWriter('output.mp4',cv.VideoWriter_fourcc('m','p','4','v'), FRAME_RATE, (width,height))
+    out = cv.VideoWriter('output.mp4',cv.VideoWriter_fourcc('m','p','4','v'), FPS, (width,height))
     while True:
         has_frame, frame = webcam.read()
         if has_frame == False:
             break
-        # grayscale image
-        # gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        # ret, corners = cv.findChessboardCorners(gray,(ROWS, COLS), None)
-        ret, corners, gray = find_chessboard_corners(frame, camera=False)
+        ret, corners, gray = find_chessboard_corners(frame, camera=True)
         if ret == True:
             corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
             ret, rvecs, tvecs = cv.solvePnP(OBJP, corners2, mtx, dist)
@@ -302,38 +420,47 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         out.write(frame)
         if cv.waitKey(1) == ord('q'):
             break
-    # write the output video to file
     out.release()
     cv.destroyAllWindows()
     webcam.release()
 
 
 def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
-    images = glob.glob(IMAGE_PATH + 'Test/'+ '*.jpg')
+    """Draws the cube on the chessboard in the images from the test folder.
+
+    Parameters
+    ----------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    optimal_camera_matrix : np.ndarray
+        The optimal camera matrix.
+    """
+    image_path = config.get('test_image_path')
+    images = glob.glob(os.path.join(image_path, '*.jpg'))
+    if len(images) == 0:
+        print(f"No images found in the folder {image_path}. Exiting...")
+        exit()
     for fname in images:
         img = cv.imread(fname)
-        ret, corners, gray = find_chessboard_corners(img)
+        _, corners, _ = find_chessboard_corners(img)
         _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
         img = draw_world_axis(img, rvecs, tvecs, mtx, dist, size=5)
         img = draw_cube(img, rvecs, tvecs, mtx, dist, size=3)
         cv.imshow(f'cube {fname}', img)
         cv.waitKey(0)
         cv.destroyAllWindows()
-    # test_image_number = 22
-    # image_name = IMAGE_PATH + str(test_image_number).zfill(2) + '.jpg'
-    # img = cv.imread(image_name)
-    # _, corners, _ = find_chessboard_corners(img)
-    # _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
-    # img = draw_world_axis(img, rvecs, tvecs, mtx, dist, size=5)
-    # img = draw_cube(img, rvecs, tvecs, mtx, dist, size=3)
-    # cv.imshow('cube', img)
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
 
 
 def main():
+    """Main function. It will calibrate the camera (or load the camera parameters from file) and then either open the webcam or draw the cube on the chessboard in the images from the test folder."""
     mtx, dist, rvecs, tvecs, optimal_camera_matrix = calibrate_camera()
-    if VIDEO:
+    if USE_WEBCAM:
         video(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
     else:
         image(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
