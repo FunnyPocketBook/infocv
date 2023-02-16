@@ -2,9 +2,7 @@ chessboard:
   rows: 9
   cols: 6
   cell_length: 21.34 # Length of a chessboard cell in the real world
-webcam: 
-  fps: 10
-  use_webcam: False # Set True to use webcam, False to use images
+webcam: True # Set True to use webcam, False to use images
 calibration:
   calibration_file: "camera_config_25.npz"
   image_path: "ass1/images/"

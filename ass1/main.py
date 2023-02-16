@@ -13,8 +13,7 @@ CELL_LENGTH = config.get("chessboard", "cell_length")
 CAMERA_CONFIG_PATH = config.get("calibration", "calibration_file")
 IMAGE_PATH = config.get("calibration", "image_path")
 TRAINING_IMAGES_AMNT = config.get("calibration", "training_images_amnt")
-FPS = config.get("webcam", "fps")
-USE_WEBCAM = config.get("webcam", "use_webcam")
+USE_WEBCAM = config.get("webcam")
 
 
 OBJP = np.zeros((COLS * ROWS, 3), np.float32)
@@ -31,7 +30,7 @@ class Color:
     PURPLE = (255, 0, 255)
     CYAN = (255, 255, 0)
 
-    
+
 def get_corners_manually(img: np.ndarray) -> np.ndarray:
     """Get the corners of the chessboard manually by clicking on the corners of the chessboard.
     
@@ -115,6 +114,7 @@ def load_camera_config(file=CAMERA_CONFIG_PATH):
         mtx, dist, rvecs, tvecs, optimal_camera_matrix= [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs', 'optimal_camera_matrix')]
     return mtx, dist, rvecs, tvecs, optimal_camera_matrix
 
+
 def draw_world_axis(img, rVecs, tVecs, cameraMatrix, dist, size=1):
     """Draws the world axis on the image.
     
@@ -149,6 +149,7 @@ def draw_world_axis(img, rVecs, tVecs, cameraMatrix, dist, size=1):
     cv.line(img, point_one, point_three, Color.GREEN, 3)
     cv.line(img, point_one, point_four, Color.BLUE, 3)
     return img
+
 
 def draw_cube(img, rvecs, tvecs, cam_mtx, dist, size=1):
     """Draws a cube on the image.
@@ -311,8 +312,10 @@ def train_camera():
     return object_points, image_points, gray.shape
 
 
-def find_chessboard_corners(img, camera=False):
-    """Finds the chessboard corners in the image. It tries to find the corners automatically, but if that fails, it asks the user to manually select the corners.
+def find_chessboard_corners(img, camera=False, preprocess=False):
+    """Finds the chessboard corners in the image.
+    First, it tries to find the corners automatically. If that fails, an image preprocessing step is applied and attempts to find the corners automatically again. If that fails, it asks the user to manually select the corners.
+
 
     Parameters
     ----------
@@ -330,7 +333,10 @@ def find_chessboard_corners(img, camera=False):
     gray : np.ndarray
         The grayscale image.
     """
-    gray = preprocess_image(img)
+    if preprocess:
+        gray = preprocess_image(img)
+    else:
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
     if ret == True:
         corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
@@ -340,6 +346,8 @@ def find_chessboard_corners(img, camera=False):
             cv.waitKey(0)
             cv.destroyAllWindows()
         return True, corners, gray
+    elif not camera and not preprocess:
+        return find_chessboard_corners(img, camera, preprocess=True)
     elif not camera:
         manual_corners = get_corners_manually(img)
         corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
@@ -379,6 +387,7 @@ def calibrate_camera():
     else:
         return load_camera_config()
 
+
 def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
     """Opens the webcam and draws the cube on the chessboard in the video feed. It also saves the video to a file.
     
@@ -398,6 +407,8 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
     # Inspired from here https://github.com/pavithran-s/Camera_Calibaration/blob/master/draw_cube.ipynb
     print("Opening webcam...")
     webcam = cv.VideoCapture(0, cv.CAP_DSHOW)
+    webcam.set(cv.CAP_PROP_FRAME_WIDTH, 1920)
+    webcam.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)
     if webcam.isOpened(): 
         print("Webcam opened")
     else:
@@ -405,7 +416,9 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         exit()
     width = int(webcam.get(3))
     height = int(webcam.get(4))
-    out = cv.VideoWriter('output.mp4',cv.VideoWriter_fourcc('m','p','4','v'), FPS, (width,height))
+    # write video file as mp4
+    fourcc = cv.VideoWriter_fourcc(*'mp4v')
+    out = cv.VideoWriter('output.mp4', fourcc, 5, (width, height))
     while True:
         has_frame, frame = webcam.read()
         if has_frame == False:
@@ -464,6 +477,7 @@ def main():
         video(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
     else:
         image(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
+
 
 if __name__ == '__main__':
     main()
