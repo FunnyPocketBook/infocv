@@ -133,7 +133,7 @@ def draw_cube(img, rVecs, tVecs, cameraMatrix, d, size=1):
         "sides": Color.CYAN
     }
 
-    thiccness = 3
+    thiccness = 1
 
     groups = [
         {"points": points[:4], "color": colors["bottom"]},
@@ -228,7 +228,7 @@ def train_camera():
             break
         print(f"Processing image {i}...")
         img = cv.imread(fname)
-        ret, corners, gray = find_chessboard_corners(img, CRITERIA)
+        ret, corners, gray = find_chessboard_corners(img)
         object_points.append(OBJP)
         image_points.append(corners)
     return object_points, image_points, gray
@@ -292,7 +292,7 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         # grayscale image
         # gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         # ret, corners = cv.findChessboardCorners(gray,(ROWS, COLS), None)
-        ret, corners, gray = find_chessboard_corners(frame)
+        ret, corners, gray = find_chessboard_corners(frame, camera=False)
         if ret == True:
             corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
             ret, rvecs, tvecs = cv.solvePnP(OBJP, corners2, mtx, dist)
@@ -309,7 +309,7 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
 
 
 def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
-    images = glob.glob(IMAGE_PATH + '*.jpg')
+    images = glob.glob(IMAGE_PATH + 'Test/'+ '*.jpg')
     for fname in images:
         img = cv.imread(fname)
         ret, corners, gray = find_chessboard_corners(img)
