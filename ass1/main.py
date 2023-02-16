@@ -290,9 +290,9 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         if has_frame == False:
             break
         # grayscale image
-        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        ret, corners = cv.findChessboardCorners(gray,(ROWS, COLS), None)
-        # ret, corners, gray = find_chessboard_corners(frame)
+        # gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        # ret, corners = cv.findChessboardCorners(gray,(ROWS, COLS), None)
+        ret, corners, gray = find_chessboard_corners(frame)
         if ret == True:
             corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
             ret, rvecs, tvecs = cv.solvePnP(OBJP, corners2, mtx, dist)
