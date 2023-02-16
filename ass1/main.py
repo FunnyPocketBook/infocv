@@ -8,19 +8,32 @@ CELL_LENGTH = 21.34
 ROWS = 9
 COLS = 6
 CAMERA_CONFIG_PATH = "camera_config_all.npz"
-TRAINING_IMAGES_AMNT = 0
+TRAINING_IMAGES_AMNT = 0 # Set to 0 to use all images that are found in IMAGE_PATH, set to a number to use that many images
 IMAGE_PATH = "ass1/images/"
+SHOW_IMAGES = False # Set True to show the images of the found corners during training, False to not show images
+CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+FRAME_RATE = 24 # set frame rate of the webcam
+
+VIDEO = False # Set True to use webcam, False to use images
 
 
-objp = np.zeros((COLS * ROWS, 3), np.float32)
-objp[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
+OBJP = np.zeros((COLS * ROWS, 3), np.float32)
+OBJP[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
 
-manual_corners = []
+class Color:
+    RED = (0, 0, 255)
+    GREEN = (0, 255, 0)
+    BLUE = (255, 0, 0)
+    WHITE = (255, 255, 255)
+    BLACK = (0, 0, 0)
+    YELLOW = (0, 255, 255)
+    PURPLE = (255, 0, 255)
+    CYAN = (255, 255, 0)
 
     
 def get_corners_manually(img):
-    print("Click on the four corners of the chessboard in the following order: top left, top right, bottom right, bottom left. When done, press any key to continue.")
-    global manual_corners, ROWS, COLS
+    print("Click on the four corners of the chessboard. When done, press any key to continue.")
+    manual_corners = []
     def click_event(event, x, y, flags, params):
         if event == cv.EVENT_LBUTTONDOWN:
             print(x, ' ', y)
@@ -28,28 +41,17 @@ def get_corners_manually(img):
             font = cv.FONT_HERSHEY_SIMPLEX
             strXY = str(x) + ', ' + str(y)
             cv.putText(visual_image, strXY, (x, y), font, .5, (255, 255, 0), 2)
-            cv.imshow('image', visual_image)
+            cv.imshow('Manual corners', visual_image)
     #In case the text  and text-color messes with the corner interpolation
     visual_image = img.copy()
-    cv.imshow('image', visual_image)
-    cv.setMouseCallback('image', click_event)
+    cv.imshow('Manual corners', visual_image)
+    cv.setMouseCallback('Manual corners', click_event)
     cv.waitKey(0)
     cv.destroyAllWindows()
-    cv.imshow('image', visual_image)
     if len(manual_corners) != 4:
         print("The number of corners is not 4. Please try again.")
-        manual_corners = []
         return get_corners_manually(img)
-    cv.destroyAllWindows()
     corners = interpolate_chessboard_corners(manual_corners, ROWS, COLS)
-    #print(corners)
-    manual_corners = []
-    # draw the corners on the image
-    #for corner in corners:
-    #   cv.circle(img, (int(corner[0]), int(corner[1])), 5, (0, 0, 255), -1)
-
-    #cv.imshow("Image", img)
-    cv.waitKey(0)
     cv.destroyAllWindows()
     return corners
 
@@ -87,17 +89,16 @@ def get_corners_manually(img):
 
 #     return warped
 
-def save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints, file=CAMERA_CONFIG_PATH):
-    np.savez(file, mtx=mtx, dist=dist, rvecs=rvecs, tvecs=tvecs, optimal_camera_matrix=optimal_camera_matrix, objpoints=objpoints, imgpoints=imgpoints)
+def save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, file=CAMERA_CONFIG_PATH):
+    np.savez(file, mtx=mtx, dist=dist, rvecs=rvecs, tvecs=tvecs, optimal_camera_matrix=optimal_camera_matrix)
     
 
 def load_camera_config(file=CAMERA_CONFIG_PATH):
     with np.load(file) as X:
-        mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints = [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs', 'optimal_camera_matrix', 'objpoints', 'imgpoints')]
-    return mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints
+        mtx, dist, rvecs, tvecs, optimal_camera_matrix= [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs', 'optimal_camera_matrix')]
+    return mtx, dist, rvecs, tvecs, optimal_camera_matrix
 
 def draw_world_axis(img, rVecs, tVecs, cameraMatrix, d, size=1):
-    img = img.copy()
     #Create array that will hold four 3D points
     points = np.float32([[0,0,0],[size * CELL_LENGTH,0,0],[0,size * CELL_LENGTH,0],[0,0,-size * CELL_LENGTH]])
                                                                                                                                         #^might have to be negative
@@ -109,13 +110,13 @@ def draw_world_axis(img, rVecs, tVecs, cameraMatrix, d, size=1):
     point_four = tuple(map(int, imgpts[3].ravel()))
     
 	#Draws XYZ lines in different colors and thickness of lines
-    cv.line(img, point_one, point_two, (255, 0, 0), 3)
-    cv.line(img, point_one, point_three, (0, 255, 0), 3)
-    cv.line(img, point_one, point_four, (0, 0, 255), 3)
+    cv.line(img, point_one, point_two, Color.RED, 3)
+    cv.line(img, point_one, point_three, Color.GREEN, 3)
+    cv.line(img, point_one, point_four, Color.BLUE, 3)
     return img
 
 def draw_cube(img, rVecs, tVecs, cameraMatrix, d, size=1):
-    img = img.copy()
+    # todo: image 29, the cube doesn't follow the z-axis and is slightly off
     points = np.float32([[0,0,0], [0,size*CELL_LENGTH,0], [size*CELL_LENGTH,size*CELL_LENGTH,0], [size*CELL_LENGTH,0,0], #Bottom 4 points 
     [0,0,-size*CELL_LENGTH],[0,size*CELL_LENGTH,-size*CELL_LENGTH],[size*CELL_LENGTH,size*CELL_LENGTH,-size*CELL_LENGTH],[size*CELL_LENGTH,0,-size*CELL_LENGTH] ]) #Top 4 points -> Z might  have to be negative
     #3D points projected to 2D coordinates
@@ -125,10 +126,11 @@ def draw_cube(img, rVecs, tVecs, cameraMatrix, d, size=1):
     for i in range(0, 8):
         points.append(tuple(map(int, imgpts[i].ravel())))
 
+
     colors = {
-        "bottom": (255, 0, 0),
-        "top": (0, 255, 0),
-        "sides": (0, 0, 255)
+        "bottom": Color.CYAN,
+        "top": Color.CYAN,
+        "sides": Color.CYAN
     }
 
     thiccness = 3
@@ -197,6 +199,8 @@ def interpolate_chessboard_corners(corners, rows, cols):
 
 def preprocess_image(img):
     #todo: play around with these parameters
+    # not sure if this is even necessary...
+    # although I just found an image where this function makes a difference
     img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     img = cv.threshold(img, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[1]
     kernel = np.ones((1, 1), np.uint8)
@@ -210,83 +214,90 @@ def preprocess_image(img):
     return img
 
 
-def train_camera(show_images=False):
-    # termination criteria
-    criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+def train_camera():
     # Arrays to store object points and image points from all the images.
     object_points = [] # 3d point in real world space
     image_points = [] # 2d points in image plane.
     # read images from folder relative to the main.py file
     images = glob.glob(IMAGE_PATH + '*.jpg')
-    print(len(images))
+    if len(images) == 0:
+        print("No images found in " + IMAGE_PATH)
+        exit()
     for i, fname in enumerate(images):
         if TRAINING_IMAGES_AMNT != 0 and i >= TRAINING_IMAGES_AMNT:
             break
-        print(i)
+        print(f"Processing image {i}...")
         img = cv.imread(fname)
-        objp, corners, gray = find_chessboard_corners(img, criteria, show_images)
-        object_points.append(objp)
+        ret, corners, gray = find_chessboard_corners(img, CRITERIA)
+        object_points.append(OBJP)
         image_points.append(corners)
     return object_points, image_points, gray
 
 
-def find_chessboard_corners(img, criteria, show_images=False):
+def find_chessboard_corners(img, camera=False):
     gray = preprocess_image(img)
+    # gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
     # Find the chess board corners
     ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
     # If found, add object points, image points (after refining them)
     if ret == True:
-        corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
-        if show_images:
+        corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
+        if SHOW_IMAGES:
             cv.drawChessboardCorners(img, (ROWS, COLS), corners2, ret)
             cv.imshow('img', img)
             cv.waitKey(0)
-    else:
+            cv.destroyAllWindows()
+        return True, corners2, gray
+    elif not camera:
         manual_corners = get_corners_manually(img)
-        corners2 = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), criteria)
-        if show_images:
+        corners2 = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
+        if SHOW_IMAGES:
             # Draw and display the corners
             cv.drawChessboardCorners(img, (ROWS, COLS), corners2, True)
             cv.imshow('img', img)
             cv.waitKey(0)
-    cv.destroyAllWindows()
-    return objp, corners2, gray
+            cv.destroyAllWindows()
+    return False, corners2, gray
 
 
-def calibrate_camera(show_images=False):
+def calibrate_camera():
     # check if camera calibration file exists
     if not os.path.isfile(CAMERA_CONFIG_PATH):
         print('Calibrating camera...')
-        objpoints, imgpoints, gray = train_camera(show_images)
+        objpoints, imgpoints, gray = train_camera()
         ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
         h,  w = gray.shape[:2]
         optimal_camera_matrix, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
-        # save mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints and imgpoints to file
-        save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints)
-        return mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints
+        save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
+        return mtx, dist, rvecs, tvecs, optimal_camera_matrix
     else:
-        # load mtx, dist, rvecs, tvecs, objpoints and imgpoints from file
         return load_camera_config()
 
-def video():
-    mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints = calibrate_camera(show_images=False)
+def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
+    # Inspired from here https://github.com/pavithran-s/Camera_Calibaration/blob/master/draw_cube.ipynb
     print("Opening webcam...")
-    webcam = cv.VideoCapture(0)
+    webcam = cv.VideoCapture(1)
     if webcam.isOpened(): 
         print("Webcam opened")
     else:
         print("Unable to read camera feed")
-    out = cv.VideoWriter('output.mp4',cv.VideoWriter_fourcc('M','J','P','G'), 10, (int(webcam.get(3)),int(webcam.get(4))))
+    width = int(webcam.get(3))
+    height = int(webcam.get(4))
+    out = cv.VideoWriter('output.mp4',cv.VideoWriter_fourcc('m','p','4','v'), FRAME_RATE, (width,height))
     while True:
         has_frame, frame = webcam.read()
         if has_frame == False:
             break
-        gray = cv.cvtColor(frame,cv.COLOR_BGR2GRAY)
+        # grayscale image
+        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         ret, corners = cv.findChessboardCorners(gray,(ROWS, COLS), None)
+        # ret, corners, gray = find_chessboard_corners(frame)
         if ret == True:
-            ret, rvecs, tvecs = cv.solvePnP(objp, corners, mtx, dist)
-            frame = draw_cube(frame, rvecs, tvecs, mtx, dist, 2)
+            corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
+            ret, rvecs, tvecs = cv.solvePnP(OBJP, corners2, mtx, dist)
+            frame = draw_world_axis(frame, rvecs, tvecs, mtx, dist, size=5)
+            frame = draw_cube(frame, rvecs, tvecs, mtx, dist, size=3)
         cv.imshow('images',frame)
         out.write(frame)
         if cv.waitKey(1) == ord('q'):
@@ -297,39 +308,35 @@ def video():
     webcam.release()
 
 
-VIDEO = False
+def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
+    images = glob.glob(IMAGE_PATH + '*.jpg')
+    for fname in images:
+        img = cv.imread(fname)
+        ret, corners, gray = find_chessboard_corners(img)
+        _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
+        img = draw_world_axis(img, rvecs, tvecs, mtx, dist, size=5)
+        img = draw_cube(img, rvecs, tvecs, mtx, dist, size=3)
+        cv.imshow(f'cube {fname}', img)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+    # test_image_number = 22
+    # image_name = IMAGE_PATH + str(test_image_number).zfill(2) + '.jpg'
+    # img = cv.imread(image_name)
+    # _, corners, _ = find_chessboard_corners(img)
+    # _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
+    # img = draw_world_axis(img, rvecs, tvecs, mtx, dist, size=5)
+    # img = draw_cube(img, rvecs, tvecs, mtx, dist, size=3)
+    # cv.imshow('cube', img)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
 
 
 def main():
+    mtx, dist, rvecs, tvecs, optimal_camera_matrix = calibrate_camera()
     if VIDEO:
-        video()
-        return
+        video(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
     else:
-        mtx, dist, rvecs, tvecs, optimal_camera_matrix, objpoints, imgpoints = calibrate_camera(show_images=True)
-        test_image_number = 2
-        image_name = IMAGE_PATH + str(test_image_number).zfill(2) + '.jpg'
-        img = cv.imread(image_name)
-        criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-        objp, imgp, gray = find_chessboard_corners(img, criteria, show_images=False)
-        # h,  w = img.shape[:2]
-        # undistort
-        # mapx, mapy = cv.initUndistortRectifyMap(mtx, dist, None, optimal_camera_matrix, (w,h), 5)
-        # dst = cv.remap(img, mapx, mapy, cv.INTER_LINEAR)
-        # # crop the image
-        # x, y, w, h = roi
-        # dst = dst[y:y+h, x:x+w]
-        ret, rvecs, tvecs = cv.solvePnP(objp, imgp, mtx, dist)
-        size = 3
-        # cv.imshow('world_axis', draw_world_axis(img, rvecs, tvecs, mtx, dist, size))
-        # cv.waitKey(0)
-        # cv.destroyAllWindows()
-        # Draw a cube on the image
-        cv.imshow('cube', draw_cube(img, rvecs, tvecs, mtx, dist, size))
-        cv.waitKey(0)
-        cv.destroyAllWindows()
-    
-
-
+        image(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
 
 if __name__ == '__main__':
     main()
