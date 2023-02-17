@@ -15,7 +15,6 @@ IMAGE_PATH = config.get("calibration", "image_path")
 TRAINING_IMAGES_AMNT = config.get("calibration", "training_images_amnt")
 USE_WEBCAM = config.get("webcam")
 
-
 OBJP = np.zeros((COLS * ROWS, 3), np.float32)
 OBJP[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
 
@@ -307,8 +306,9 @@ def train_camera():
         print(f"Processing image {fname}...")
         img = cv.imread(fname)
         ret, corners, gray = find_chessboard_corners(img)
-        object_points.append(OBJP)
-        image_points.append(corners)
+        if ret:
+            object_points.append(OBJP)
+            image_points.append(corners)
     return object_points, image_points, gray.shape
 
 
@@ -333,22 +333,24 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
     gray : np.ndarray
         The grayscale image.
     """
+    corners_found = False
     if preprocess:
         gray = preprocess_image(img)
     else:
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
     if ret == True:
+        corners_found = True
         corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
         if config.get("verbose"):
             cv.drawChessboardCorners(img, (ROWS, COLS), corners, ret)
             cv.imshow('img', img)
             cv.waitKey(0)
             cv.destroyAllWindows()
-        return True, corners, gray
     elif not camera and not preprocess:
         return find_chessboard_corners(img, camera, preprocess=True)
     elif not camera:
+        corners_found = True
         manual_corners = get_corners_manually(img)
         corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
         if config.get("verbose"):
@@ -356,8 +358,16 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
             cv.imshow('img', img)
             cv.waitKey(0)
             cv.destroyAllWindows()
-        return True, corners, gray
-    return False, corners, gray
+    if corners_found:
+        # calculate the reprojection error by calibrating a camera on just this image
+        ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera([OBJP], [corners], gray.shape[::-1], None, None)
+        if config.get("verbose"):
+            print(f"Reprojection error: {ret}")
+        if ret > config.get("calibration", "max_reprojection_error"):
+            if config.get("verbose"):
+                print(f"Reprojection error too high: ({ret:.4f} > {config.get('calibration', 'max_reprojection_error')})")
+            corners_found = False
+    return corners_found, corners, gray
 
 
 def calibrate_camera():
@@ -378,14 +388,49 @@ def calibrate_camera():
     """
     if not os.path.isfile(CAMERA_CONFIG_PATH):
         print('Calibrating camera...')
-        objpoints, imgpoints, img_shape = train_camera()
-        ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, img_shape[::-1], None, None)
+        object_points, image_points, img_shape = train_camera()
+        ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(object_points, image_points, img_shape[::-1], None, None)
         h,  w = img_shape[:2]
         optimal_camera_matrix, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
+        
+        #Get difference between actual points and projected points
+        mean_error = 0
+        for i in range(len(object_points)):
+            mean_error += reprojection_error(object_points[i], image_points[i], rvecs[i], tvecs[i], mtx, dist)
+        total_error = mean_error/len(object_points)
+        print (f"Total error: {total_error}")
         save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
         return mtx, dist, rvecs, tvecs, optimal_camera_matrix
     else:
         return load_camera_config()
+        
+
+def reprojection_error(objp, imgp, rvecs, tvecs, mtx, dist):
+    """Calculates the reprojection error.
+    
+    Parameters
+    ----------
+    objp : np.ndarray
+        The object points in real world space.
+    imgp : np.ndarray
+        The image points in image space.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    
+    Returns
+    -------
+    float
+        The reprojection error.
+    """
+    imgpoints2, _ = cv.projectPoints(objp, rvecs, tvecs, mtx, dist)
+    error = cv.norm(imgp, imgpoints2, cv.NORM_L2)/len(imgpoints2)
+    return error
 
 
 def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
@@ -465,6 +510,8 @@ def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
         img = draw_world_axis(img, rvecs, tvecs, mtx, dist, size=5)
         img = draw_cube(img, rvecs, tvecs, mtx, dist, size=3)
+        # write the image to a file at the same location
+        cv.imwrite(f'{image_path}_cube.jpg', img)
         cv.imshow(f'cube {fname}', img)
         cv.waitKey(0)
         cv.destroyAllWindows()
