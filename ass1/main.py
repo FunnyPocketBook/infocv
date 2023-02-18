@@ -69,7 +69,7 @@ def get_corners_manually(img: np.ndarray) -> np.ndarray:
     return corners
 
 
-def save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, file=CAMERA_CONFIG_PATH):
+def save_camera_config(mtx, dist, rvecs, tvecs, file=CAMERA_CONFIG_PATH):
     """Save the camera configuration to a file.
     
     Parameters
@@ -82,12 +82,10 @@ def save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix, file=CAME
         The rotation vectors.
     tvecs : np.ndarray
         The translation vectors.
-    optimal_camera_matrix : np.ndarray
-        The optimal camera matrix.
     file : str, optional
         The path to the file, by default CAMERA_CONFIG_PATH (set in config.yml)
     """
-    np.savez(file, mtx=mtx, dist=dist, rvecs=rvecs, tvecs=tvecs, optimal_camera_matrix=optimal_camera_matrix)
+    np.savez(file, mtx=mtx, dist=dist, rvecs=rvecs, tvecs=tvecs)
     
 
 def load_camera_config(file=CAMERA_CONFIG_PATH):
@@ -112,8 +110,8 @@ def load_camera_config(file=CAMERA_CONFIG_PATH):
         The optimal camera matrix.
     """
     with np.load(file) as X:
-        mtx, dist, rvecs, tvecs, optimal_camera_matrix= [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs', 'optimal_camera_matrix')]
-    return mtx, dist, rvecs, tvecs, optimal_camera_matrix
+        mtx, dist, rvecs, tvecs= [X[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs')]
+    return mtx, dist, rvecs, tvecs
 
 
 def draw_world_axis(img, rVecs, tVecs, cameraMatrix, dist, size=1):
@@ -395,44 +393,22 @@ def calibrate_camera():
         The rotation vectors.
     tvecs : np.ndarray
         The translation vectors.
-    optimal_camera_matrix : np.ndarray
-        The optimal camera matrix.
     """
     if not os.path.isfile(CAMERA_CONFIG_PATH):
         print('Calibrating camera...')
         object_points, image_points, img_shape = train_camera()
+        if len(object_points) == 0 or len(image_points) == 0:
+            print("All images have been discarded due to high reprojection error. Exiting...")
+            exit()
         ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(object_points, image_points, img_shape[::-1], None, None)
-        h,  w = img_shape[:2]
-        optimal_camera_matrix, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
-
-
-
-        # imgpoints2, _ = cv.projectPoints(objp, rvecs, tvecs, mtx, dist)
-        # error = cv.norm(imgp, imgpoints2, cv.NORM_L2)/len(imgpoints2)
-
-        tot_error = 0
-        for i in range(len(object_points)):
-            reprojected_points, _ = cv.projectPoints(object_points[i], rvecs[i], tvecs[i], mtx, dist)
-            reprojected_points = reprojected_points.reshape(-1,2)
-            tot_error += np.sum(np.abs(image_points[i]-reprojected_points)**2)
-
-        mean_error = np.sqrt(tot_error / len(object_points))
-
-
-        
-        # #Get difference between actual points and projected points
-        # mean_error = 0
-        # for i in range(len(object_points)):
-        #     mean_error += reprojection_error(object_points[i], image_points[i], rvecs[i], tvecs[i], mtx, dist)
-        # mean_error = mean_error/len(object_points)
-        print (f"Mean reprojection error: {mean_error}")
-        save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
-        return mtx, dist, rvecs, tvecs, optimal_camera_matrix
+        print (f"Mean reprojection error: {ret}")
+        save_camera_config(mtx, dist, rvecs, tvecs)
+        return mtx, dist, rvecs, tvecs
     else:
         return load_camera_config()
 
 
-def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
+def video(mtx, dist, rvecs, tvecs):
     """Opens the webcam and draws the cube on the chessboard in the video feed. It also saves the video to a file.
     
     Parameters
@@ -445,8 +421,6 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         The rotation vectors.
     tvecs : np.ndarray
         The translation vectors.
-    optimal_camera_matrix : np.ndarray
-        The optimal camera matrix.
     """
     # Inspired from here https://github.com/pavithran-s/Camera_Calibaration/blob/master/draw_cube.ipynb
     print("Opening webcam...")
@@ -482,7 +456,7 @@ def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
     webcam.release()
 
 
-def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
+def image(mtx, dist, rvecs, tvecs):
     """Draws the cube on the chessboard in the images from the test folder.
 
     Parameters
@@ -495,8 +469,6 @@ def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
         The rotation vectors.
     tvecs : np.ndarray
         The translation vectors.
-    optimal_camera_matrix : np.ndarray
-        The optimal camera matrix.
     """
     image_path = config.get('test_image_path')
     images = glob.glob(os.path.join(image_path, '*.jpg'))
@@ -518,11 +490,11 @@ def image(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
 
 def main():
     """Main function. It will calibrate the camera (or load the camera parameters from file) and then either open the webcam or draw the cube on the chessboard in the images from the test folder."""
-    mtx, dist, rvecs, tvecs, optimal_camera_matrix = calibrate_camera()
+    mtx, dist, rvecs, tvecs = calibrate_camera()
     if USE_WEBCAM:
-        video(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
+        video(mtx, dist, rvecs, tvecs)
     else:
-        image(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
+        image(mtx, dist, rvecs, tvecs)
 
 
 if __name__ == '__main__':
