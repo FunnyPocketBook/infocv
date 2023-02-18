@@ -12,6 +12,7 @@ ROWS = config.get("chessboard", "rows")
 CELL_LENGTH = config.get("chessboard", "cell_length")
 CAMERA_CONFIG_PATH = config.get("calibration", "calibration_file")
 IMAGE_PATH = config.get("calibration", "image_path")
+VIDEO_PATH = config.get("calibration", "video_path")
 TRAINING_IMAGES_AMNT = config.get("calibration", "training_images_amnt")
 USE_WEBCAM = config.get("webcam")
 MAX_REPROJECTION_ERROR = config.get("calibration", "max_reprojection_error")
@@ -396,7 +397,8 @@ def calibrate_camera():
     """
     if not os.path.isfile(CAMERA_CONFIG_PATH):
         print('Calibrating camera...')
-        object_points, image_points, img_shape = train_camera()
+        #object_points, image_points, img_shape = train_camera()
+        object_points, image_points, img_shape = avi_train_camera()
         if len(object_points) == 0 or len(image_points) == 0:
             print("All images have been discarded due to high reprojection error. Exiting...")
             exit()
@@ -454,6 +456,41 @@ def video(mtx, dist, rvecs, tvecs):
     out.release()
     cv.destroyAllWindows()
     webcam.release()
+
+def avi_train_camera():
+    """Trains the camera using the video in the VIDEO_PATH folder.
+    
+    Returns
+    -------
+    object_points : list
+        The object points in real world space.
+    image_points : list
+        The image points in image space.
+    shape : tuple
+        The shape of the images.
+    """
+    print("Opening avi video...")
+    cap = cv.VideoCapture(VIDEO_PATH + 'video_test.avi')
+    object_points = []
+    image_points = []
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            print("Video could not be read")
+            break
+        if cv.waitKey(1) == ord('s'):
+            ret2, corners, gray = find_chessboard_corners(frame, camera=True)
+            if ret2 == True:
+                object_points.append(OBJP)
+                image_points.append(corners)
+                cv.imshow('recorded',frame)
+        cv.imshow('images',frame)
+        if cv.waitKey(1) == ord('q'):
+            break
+    cv.destroyAllWindows()
+    cap.release()
+    return object_points, image_points, gray.shape 
 
 
 def image(mtx, dist, rvecs, tvecs):
