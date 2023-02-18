@@ -4,9 +4,9 @@ chessboard:
   cell_length: 21.34 # Length of a chessboard cell in the real world
 webcam: False # Set True to use webcam, False to use images
 calibration:
-  calibration_file: "camera_config_test.npz"
-  image_path: "ass1/images/25/"
+  calibration_file: "camera_config_10.npz"
+  image_path: "ass1/images/10/"
   training_images_amnt: 0 # Set to 0 to use all images that are found in IMAGE_PATH, set to a number to use that many images
-  max_reprojection_error: 0.7
-verbose: True # True shows preprocessed image and image with found corners
+  max_reprojection_error: 0.8
+verbose: 1 # 0 provides no/minimal console output. 1 provides additional console output. 2 shows the images as they go through the process.
 test_image_path: "ass1/images/Test"

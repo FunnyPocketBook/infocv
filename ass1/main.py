@@ -14,6 +14,8 @@ CAMERA_CONFIG_PATH = config.get("calibration", "calibration_file")
 IMAGE_PATH = config.get("calibration", "image_path")
 TRAINING_IMAGES_AMNT = config.get("calibration", "training_images_amnt")
 USE_WEBCAM = config.get("webcam")
+MAX_REPROJECTION_ERROR = config.get("calibration", "max_reprojection_error")
+VERBOSE = config.get("verbose")
 
 OBJP = np.zeros((COLS * ROWS, 3), np.float32)
 OBJP[:,:2] = np.mgrid[0:ROWS,0:COLS].T.reshape(-1,2) * CELL_LENGTH
@@ -275,7 +277,7 @@ def preprocess_image(img):
     # sharpen the edges of the image
     kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
     img = cv.filter2D(img, -1, kernel)
-    if config.get("verbose"):
+    if VERBOSE == 2:
         cv.imshow("preprocessed", img)
         cv.waitKey(0)
         cv.destroyAllWindows()
@@ -297,18 +299,28 @@ def train_camera():
     object_points = []
     image_points = []
     images = glob.glob(IMAGE_PATH + '*.jpg')
+    discarded_images = []
     if len(images) == 0:
         print(f"No images found in '{os.path.abspath(IMAGE_PATH)}'! Exiting...")
         exit()
     for i, fname in enumerate(images):
         if TRAINING_IMAGES_AMNT != 0 and i >= TRAINING_IMAGES_AMNT:
             break
-        print(f"Processing image {fname}...")
+        if VERBOSE == 1:
+            print(f"Processing image {fname}...")
         img = cv.imread(fname)
         ret, corners, gray = find_chessboard_corners(img)
         if ret:
             object_points.append(OBJP)
             image_points.append(corners)
+        else:
+            discarded_images.append(fname)
+    if len(discarded_images) > 0:
+        print(f"Discarded {len(discarded_images)} images because the reprojection error was above {MAX_REPROJECTION_ERROR}.")
+        if VERBOSE == 1:
+            print("Discarded images:")
+            for i, image in enumerate(discarded_images):
+                print(f"\t{i+1}. {image}")
     return object_points, image_points, gray.shape
 
 
@@ -342,7 +354,7 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
     if ret == True:
         corners_found = True
         corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
-        if config.get("verbose"):
+        if VERBOSE == 2:
             cv.drawChessboardCorners(img, (ROWS, COLS), corners, ret)
             cv.imshow('img', img)
             cv.waitKey(0)
@@ -353,7 +365,7 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
         corners_found = True
         manual_corners = get_corners_manually(img)
         corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
-        if config.get("verbose"):
+        if VERBOSE == 2:
             cv.drawChessboardCorners(img, (ROWS, COLS), corners, True)
             cv.imshow('img', img)
             cv.waitKey(0)
@@ -361,11 +373,11 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
     if corners_found:
         # calculate the reprojection error by calibrating a camera on just this image
         ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera([OBJP], [corners], gray.shape[::-1], None, None)
-        if config.get("verbose"):
+        if VERBOSE == 1:
             print(f"Reprojection error: {ret}")
-        if ret > config.get("calibration", "max_reprojection_error"):
-            if config.get("verbose"):
-                print(f"Reprojection error too high: ({ret:.4f} > {config.get('calibration', 'max_reprojection_error')})")
+        if ret > MAX_REPROJECTION_ERROR:
+            if VERBOSE == 1:
+                print(f"Reprojection error too high: ({ret:.4f} > {MAX_REPROJECTION_ERROR})")
             corners_found = False
     return corners_found, corners, gray
 
@@ -392,45 +404,32 @@ def calibrate_camera():
         ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(object_points, image_points, img_shape[::-1], None, None)
         h,  w = img_shape[:2]
         optimal_camera_matrix, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
-        
-        #Get difference between actual points and projected points
-        mean_error = 0
+
+
+
+        # imgpoints2, _ = cv.projectPoints(objp, rvecs, tvecs, mtx, dist)
+        # error = cv.norm(imgp, imgpoints2, cv.NORM_L2)/len(imgpoints2)
+
+        tot_error = 0
         for i in range(len(object_points)):
-            mean_error += reprojection_error(object_points[i], image_points[i], rvecs[i], tvecs[i], mtx, dist)
-        total_error = mean_error/len(object_points)
-        print (f"Total error: {total_error}")
+            reprojected_points, _ = cv.projectPoints(object_points[i], rvecs[i], tvecs[i], mtx, dist)
+            reprojected_points = reprojected_points.reshape(-1,2)
+            tot_error += np.sum(np.abs(image_points[i]-reprojected_points)**2)
+
+        mean_error = np.sqrt(tot_error / len(object_points))
+
+
+        
+        # #Get difference between actual points and projected points
+        # mean_error = 0
+        # for i in range(len(object_points)):
+        #     mean_error += reprojection_error(object_points[i], image_points[i], rvecs[i], tvecs[i], mtx, dist)
+        # mean_error = mean_error/len(object_points)
+        print (f"Mean reprojection error: {mean_error}")
         save_camera_config(mtx, dist, rvecs, tvecs, optimal_camera_matrix)
         return mtx, dist, rvecs, tvecs, optimal_camera_matrix
     else:
         return load_camera_config()
-        
-
-def reprojection_error(objp, imgp, rvecs, tvecs, mtx, dist):
-    """Calculates the reprojection error.
-    
-    Parameters
-    ----------
-    objp : np.ndarray
-        The object points in real world space.
-    imgp : np.ndarray
-        The image points in image space.
-    rvecs : np.ndarray
-        The rotation vectors.
-    tvecs : np.ndarray
-        The translation vectors.
-    mtx : np.ndarray
-        The camera matrix.
-    dist : np.ndarray
-        The distortion coefficients.
-    
-    Returns
-    -------
-    float
-        The reprojection error.
-    """
-    imgpoints2, _ = cv.projectPoints(objp, rvecs, tvecs, mtx, dist)
-    error = cv.norm(imgp, imgpoints2, cv.NORM_L2)/len(imgpoints2)
-    return error
 
 
 def video(mtx, dist, rvecs, tvecs, optimal_camera_matrix):
