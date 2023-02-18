@@ -1,4 +1,4 @@
 import json
 
-with open('config.json') as file:
+with open('ass2\config.json') as file:
     config = json.load(file)
