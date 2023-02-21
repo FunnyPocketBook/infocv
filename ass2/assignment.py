@@ -1,3 +1,4 @@
+import cv2
 import glm
 import random
 import numpy as np
@@ -46,3 +47,25 @@ def get_cam_rotation_matrices():
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][1] * np.pi / 180, [0, 1, 0])
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][2] * np.pi / 180, [0, 0, 1])
     return cam_rotations
+
+#Create background image from all frames from of videoclip. Each subsequent frame is slightly more transparent
+def get_background_image():
+    path = 'ass2/data/cam1/background.avi'
+    cap = cv2.VideoCapture(path)
+    ret, next_frame = cap.read()
+    first_frame = next_frame
+    alpha, beta = 0.0
+    counter = 0
+
+    if not ret:
+        return first_frame
+
+    average_image = cv2.addWeighted(next_frame,alpha,first_frame,beta,0.0)
+    while(ret):
+        alpha = 1.0 / (counter+1)
+        beta = 1.0 - alpha
+        counter += 1
+        average_image = cv2.addWeighted(next_frame,alpha,first_frame,beta,0.0)
+        ret, next_frame = cap.read()
+        
+    return average_image
