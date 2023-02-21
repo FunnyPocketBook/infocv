@@ -22,4 +22,16 @@
     -0.08522
   </data>
 </DistortionCoeffs>
+<RotationValues type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>1</cols>
+  <dt>f</dt>
+  <data>
+    -1.3511315797697896 -0.6498741842571298 -0.7076924614097174</data></RotationValues>
+<TranslationValues type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>1</cols>
+  <dt>f</dt>
+  <data>
+    -963.9236007577555 934.8380376676448 4072.747972444916</data></TranslationValues>
 </opencv_storage>

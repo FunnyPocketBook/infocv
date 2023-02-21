@@ -56,6 +56,7 @@ def get_corners_manually(img: np.ndarray) -> np.ndarray:
             font = cv.FONT_HERSHEY_SIMPLEX
             strXY = str(x) + ', ' + str(y)
             cv.putText(visual_image, strXY, (x, y), font, .5, (255, 255, 0), 2)
+            cv.circle(visual_image, (x, y),1, (0, 0, 255),1)
             cv.imshow('Manual corners', visual_image)
     visual_image = img.copy()
     cv.imshow('Manual corners', visual_image)
@@ -362,8 +363,8 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
         return find_chessboard_corners(img, camera, preprocess=True)
     elif not camera:
         corners_found = True
-        manual_corners = get_corners_manually(img)
-        corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
+        corners = get_corners_manually(img)
+        #corners = cv.cornerSubPix(gray, manual_corners, (11,11), (-1,-1), CRITERIA)
         if VERBOSE == 2:
             cv.drawChessboardCorners(img, (ROWS, COLS), corners, True)
             cv.imshow('img', img)
@@ -490,7 +491,44 @@ def avi_train_camera():
             break
     cv.destroyAllWindows()
     cap.release()
-    return object_points, image_points, gray.shape 
+    return object_points, image_points, gray.shape
+
+def clip_video(mtx, dist, rvecs, tvecs):
+    """Draws the world axis on the chessboard in the frame of the video from the video folder.
+    
+    Parameters
+    ----------
+    mtx : np.ndarray
+        The camera matrix.
+    dist : np.ndarray
+        The distortion coefficients.
+    rvecs : np.ndarray
+        The rotation vectors.
+    tvecs : np.ndarray
+        The translation vectors.
+    """
+    print("Opening avi video...")
+    cap = cv.VideoCapture(VIDEO_PATH + 'Extrinsics/cam1_checkerboard.avi')
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            print("Video could not be read")
+            break
+        if cv.waitKey(1) == ord('s'):
+            _, corners, _ = find_chessboard_corners(frame)
+            _, rvecs, tvecs = cv.solvePnP(OBJP, corners, mtx, dist)
+            frame = draw_world_axis(frame, rvecs, tvecs, mtx, dist, size=5)
+            # write the image to a file at the same location
+            cv.imshow(f'Axis ', frame)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
+        cv.imshow('Video',frame)
+        if cv.waitKey(1) == ord('q'):
+            break
+    cv.destroyAllWindows()
+    cap.release()
+    
 
 
 def image(mtx, dist, rvecs, tvecs):
@@ -529,7 +567,8 @@ def main():
     """Main function. It will calibrate the camera (or load the camera parameters from file) and then either open the webcam or draw the cube on the chessboard in the images from the test folder."""
     mtx, dist, rvecs, tvecs = calibrate_camera()
     if USE_WEBCAM:
-        video(mtx, dist, rvecs, tvecs)
+        #video(mtx, dist, rvecs, tvecs)
+        clip_video(mtx, dist, rvecs, tvecs)
     else:
         image(mtx, dist, rvecs, tvecs)
 
