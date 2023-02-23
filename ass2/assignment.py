@@ -9,6 +9,7 @@ block_size = 1.0
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
+    subtract_background()
     data = []
     for x in range(width):
         for z in range(depth):
@@ -69,3 +70,59 @@ def get_background_image(path = 'ass2/data/cam1/'):
         ret, next_frame = cap.read()
     cv2.imwrite(path + 'background.jpg',average_image)
     return average_image
+
+#Load files from directory and subtract background from video
+#TODO: File loading should probablty be in a separate function so files are not loaded on each update
+def subtract_background(path = 'ass2/data/cam1/'):
+    cap = cv2.VideoCapture(path + 'video.avi')
+    background_image = cv2.imread(path + 'background.jpg')
+    background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
+    background_channels = cv2.split(background_imageHSV)
+    threshhold_h = 10
+    threshhold_s = 15
+    threshhold_v = 20
+    kernelErode = np.ones((2, 2), np.uint8)
+    kernelDialate = np.ones((3, 3), np.uint8)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        cv2.imshow('Frame ', frame)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        frame_channels = cv2.split(frameHSV)
+
+        #H channel
+        temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
+        im1 = cv2.threshold(temp_frame, threshhold_h, 255, cv2.THRESH_BINARY)
+        #cv2.erode(im1[1],kernelErode,im1[1] )
+        cv2.imshow('H ', im1[1])
+        #S channel
+        temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
+        im2 = cv2.threshold(temp_frame, threshhold_s, 255, cv2.THRESH_BINARY)
+        #cv2.erode(im2[1],kernelErode,im2[1] )
+        cv2.imshow('S ', im2[1])
+        
+        #V channel
+        temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
+        im3 = cv2.threshold(temp_frame, threshhold_v, 255, cv2.THRESH_BINARY)
+        cv2.dilate(im3[1],kernelDialate,im3[1] )
+        cv2.imshow('V ', im3[1])
+        
+        true_foreground = cv2.bitwise_and(im3[1], im2[1])
+        #cv2.erode(true_foreground,kernelErode,true_foreground )
+        #cv2.dilate(true_foreground,kernelDialate,true_foreground )
+        
+        cv2.imshow('True foreground ', true_foreground)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+        #code commet incase i need it
+        #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
+        #cv2.erode(foreground[1],kernelErode,foreground[1] )
+        #cv2.dilate(foreground[1],kernelDia,foreground[1] )
+        #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
+
+    
+    return True
