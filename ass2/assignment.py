@@ -9,6 +9,7 @@ block_size = 1.0
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
+    load_camera_properties()
     subtract_background()
     data = []
     for x in range(width):
@@ -156,6 +157,15 @@ def subtract_background(path = 'ass2/data/cam1/'):
 
     
     return True
+
+#Load camera properties from folder directory
+def load_camera_properties(path = 'ass2/data/cam1/'):
+    s = cv2.FileStorage(path + "config.xml", cv2.FILE_STORAGE_READ)
+    camMatrix = s.getNode('CameraMatrix').mat()
+    d = s.getNode('DistortionCoeffs').mat()
+    rvecs = s.getNode('RotationValues').mat()
+    tvecs = s.getNode('TranslationValues').mat()
+    return camMatrix, d, rvecs, tvecs
 
 #Slider events
 def on_low_H_thresh_trackbar(val):
