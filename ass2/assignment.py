@@ -71,6 +71,18 @@ def get_background_image(path = 'ass2/data/cam1/'):
     cv2.imwrite(path + 'background.jpg',average_image)
     return average_image
 
+#Thresholds for channels
+#These values are the best i found
+threshhold_h = 13
+threshhold_s = 13
+threshhold_v = 75
+
+#UI Names
+H_name = 'H'
+S_name = 'S'
+V_name = 'V'
+window_bar_name = 'Bars'
+
 #Load files from directory and subtract background from video
 #TODO: File loading should probablty be in a separate function so files are not loaded on each update
 def subtract_background(path = 'ass2/data/cam1/'):
@@ -78,18 +90,21 @@ def subtract_background(path = 'ass2/data/cam1/'):
     background_image = cv2.imread(path + 'background.jpg')
     background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
     background_channels = cv2.split(background_imageHSV)
-    threshhold_h = 13
-    threshhold_s = 13
-    threshhold_v = 75
     kernelErode = np.ones((3, 3), np.uint8)
     kernelDialate = np.ones((3, 3), np.uint8)
+
+    #Initialize UI elements
+    cv2.namedWindow(window_bar_name)
+    cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
+    cv2.createTrackbar(S_name, window_bar_name , threshhold_s, 255, on_low_S_thresh_trackbar)
+    cv2.createTrackbar(V_name, window_bar_name , threshhold_v, 255, on_low_V_thresh_trackbar)
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         cv2.imshow('Frame ', frame)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
         frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
         frame_channels = cv2.split(blurred)
@@ -125,7 +140,7 @@ def subtract_background(path = 'ass2/data/cam1/'):
         
         cv2.imshow('True foreground ', true_foreground)
         cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        #cv2.destroyAllWindows()
 
         #code commet incase i need it
         #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
@@ -135,3 +150,23 @@ def subtract_background(path = 'ass2/data/cam1/'):
 
     
     return True
+
+#Slider events
+def on_low_H_thresh_trackbar(val):
+    global threshhold_h
+    global high_H
+    threshhold_h = val
+    threshhold_h = min(high_H-1, threshhold_h)
+    cv2.setTrackbarPos(H_name, window_bar_name, threshhold_h)
+def on_low_S_thresh_trackbar(val):
+    global threshhold_s
+    global high_S
+    threshhold_s = val
+    threshhold_s = min(high_S-1, threshhold_s)
+    cv2.setTrackbarPos(S_name, window_bar_name, threshhold_s)
+def on_low_V_thresh_trackbar(val):
+    global threshhold_v
+    global high_V
+    threshhold_v = val
+    threshhold_v = min(high_V-1, threshhold_v)
+    cv2.setTrackbarPos(V_name, window_bar_name, threshhold_v)
