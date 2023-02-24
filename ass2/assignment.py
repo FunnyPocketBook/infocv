@@ -72,7 +72,7 @@ def get_background_image(path = 'ass2/data/cam1/'):
     return average_image
 
 #Thresholds for channels
-#These values are the best i found
+#These values are the best OTSU method found and i adjusted a bit afterwards
 threshhold_h = 13
 threshhold_s = 13
 threshhold_v = 75
@@ -85,6 +85,12 @@ window_bar_name = 'Bars'
 
 #Load files from directory and subtract background from video
 #TODO: File loading should probablty be in a separate function so files are not loaded on each update
+#TODO: rewrite the function so it works like this:
+#On a single update in the scene 
+#Each camera calls this
+#Get the new frame from the video per camera
+#Perform background subtraction on the new frame
+#Return true foreground
 def subtract_background(path = 'ass2/data/cam1/'):
     cap = cv2.VideoCapture(path + 'video.avi')
     background_image = cv2.imread(path + 'background.jpg')
@@ -154,19 +160,16 @@ def subtract_background(path = 'ass2/data/cam1/'):
 #Slider events
 def on_low_H_thresh_trackbar(val):
     global threshhold_h
-    global high_H
     threshhold_h = val
-    threshhold_h = min(high_H-1, threshhold_h)
+    threshhold_h = min(255, threshhold_h)
     cv2.setTrackbarPos(H_name, window_bar_name, threshhold_h)
 def on_low_S_thresh_trackbar(val):
     global threshhold_s
-    global high_S
     threshhold_s = val
-    threshhold_s = min(high_S-1, threshhold_s)
+    threshhold_s = min(255, threshhold_s)
     cv2.setTrackbarPos(S_name, window_bar_name, threshhold_s)
 def on_low_V_thresh_trackbar(val):
     global threshhold_v
-    global high_V
     threshhold_v = val
-    threshhold_v = min(high_V-1, threshhold_v)
+    threshhold_v = min(255, threshhold_v)
     cv2.setTrackbarPos(V_name, window_bar_name, threshhold_v)
