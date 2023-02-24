@@ -78,10 +78,10 @@ def subtract_background(path = 'ass2/data/cam1/'):
     background_image = cv2.imread(path + 'background.jpg')
     background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
     background_channels = cv2.split(background_imageHSV)
-    threshhold_h = 10
-    threshhold_s = 15
-    threshhold_v = 20
-    kernelErode = np.ones((2, 2), np.uint8)
+    threshhold_h = 13
+    threshhold_s = 13
+    threshhold_v = 75
+    kernelErode = np.ones((3, 3), np.uint8)
     kernelDialate = np.ones((3, 3), np.uint8)
     while True:
         ret, frame = cap.read()
@@ -91,28 +91,37 @@ def subtract_background(path = 'ass2/data/cam1/'):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
         frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        frame_channels = cv2.split(frameHSV)
+        blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
+        frame_channels = cv2.split(blurred)
 
         #H channel
         temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
-        im1 = cv2.threshold(temp_frame, threshhold_h, 255, cv2.THRESH_BINARY)
-        #cv2.erode(im1[1],kernelErode,im1[1] )
-        cv2.imshow('H ', im1[1])
+        t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
+        cv2.erode(im1,kernelErode,im1)
+        cv2.erode(im1,kernelErode,im1)
+        cv2.erode(im1,kernelErode,im1)
+        cv2.dilate(im1,kernelDialate,im1)
+        cv2.dilate(im1,kernelDialate,im1)
+        cv2.imshow('H ', im1)
+
         #S channel
         temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
-        im2 = cv2.threshold(temp_frame, threshhold_s, 255, cv2.THRESH_BINARY)
-        #cv2.erode(im2[1],kernelErode,im2[1] )
-        cv2.imshow('S ', im2[1])
+        t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
+        cv2.erode(im2,kernelErode,im2)
+        cv2.erode(im2,kernelErode,im2)
+        cv2.erode(im2,kernelErode,im2)
+        cv2.imshow('S ', im2)
         
         #V channel
         temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
-        im3 = cv2.threshold(temp_frame, threshhold_v, 255, cv2.THRESH_BINARY)
-        cv2.dilate(im3[1],kernelDialate,im3[1] )
-        cv2.imshow('V ', im3[1])
+        t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
+        cv2.erode(im3,kernelErode,im3)
+        cv2.imshow('V ', im3)
         
-        true_foreground = cv2.bitwise_and(im3[1], im2[1])
-        #cv2.erode(true_foreground,kernelErode,true_foreground )
-        #cv2.dilate(true_foreground,kernelDialate,true_foreground )
+        true_foreground = cv2.bitwise_or(im1, im2)
+        true_foreground = cv2.bitwise_or(true_foreground, im3)
+        cv2.dilate(true_foreground,kernelDialate,true_foreground)
+        cv2.dilate(true_foreground,kernelDialate,true_foreground)
         
         cv2.imshow('True foreground ', true_foreground)
         cv2.waitKey(0)
