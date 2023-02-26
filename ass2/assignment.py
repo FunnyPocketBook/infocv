@@ -31,9 +31,9 @@ def set_voxel_positions(width, height, depth):
 def get_camera_pos(rvecs, tvecs):
     rotM, j = cv2.Rodrigues(rvecs)
     cameraPosition = -np.matrix(rotM).transpose() * np.matrix(tvecs)
-    #OpenCV uses Z for up meanwhile OpenGL uses Y for up so swap it
+    #OpenCV Y down, Z forward meanwhile OpenGL uses Y for up so swap it
     #Coordinates converted to meters
-    #Swap sign for up since opencv uses -Z for up
+    #Swap sign for up since opencv uses -Z
     return [cameraPosition[0]/100,-cameraPosition[2]/100,cameraPosition[1]/100]
 
 
@@ -60,12 +60,39 @@ def get_cam_positions():
             cam3pos,
             cam4pos]
 
+def get_extrensic_matrix(rvecs, tvecs):
+    rv = rvecs.ravel()
+    m44eye = np.identity(4)
+    rotM, j = cv2.Rodrigues(rv)
+    m44eye[:3, :3] = rotM
+    ts = tvecs.ravel()
+    #m44eye[:3,3] = ts
+    #Change sign on 2and and 3rd row to convert to correct coordinate system????
+    #https://stackoverflow.com/questions/44375149/opencv-to-opengl-coordinate-system-transform
+    for i in range(1,3):
+        for j in range(0,4):
+            m44eye[i][j] = -m44eye[i][j]
+    return m44eye
 
 def get_cam_rotation_matrices():
     # Generates dummy camera rotation matrices, looking down 45 degrees towards the center of the room
     # TODO: You need to input the estimated camera rotation matrices (4x4) of the 4 cameras in the world coordinates.
-    cam_angles = [[0, 45, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
-    cam_rotations = [glm.mat4(1), glm.mat4(1), glm.mat4(1), glm.mat4(1)]
+    #Cam1
+    cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
+    cam1M44 = get_extrensic_matrix(cam1rvecs, cam1tvecs)
+
+    #Cam2
+    cam2M, cam2d, cam2rvecs, cam2tvecs = load_camera_properties('cam2')
+    cam2M44 = get_extrensic_matrix(cam2rvecs, cam2tvecs)
+    #Cam3
+    cam3M, cam3d, cam3rvecs, cam3tvecs = load_camera_properties('cam3')
+    cam3M44 = get_extrensic_matrix(cam3rvecs, cam3tvecs)
+    #Cam4
+    cam4M, cam4d, cam4rvecs, cam4tvecs = load_camera_properties('cam4')
+    cam4M44 = get_extrensic_matrix(cam4rvecs, cam4tvecs)
+
+    cam_angles = [[0, 42, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
+    cam_rotations = [glm.mat4(cam1M44), glm.mat4(cam2M44), glm.mat4(cam3M44), glm.mat4(cam4M44)]
     for c in range(len(cam_rotations)):
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][0] * np.pi / 180, [1, 0, 0])
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][1] * np.pi / 180, [0, 1, 0])
