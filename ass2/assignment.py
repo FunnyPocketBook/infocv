@@ -31,7 +31,9 @@ def set_voxel_positions(width, height, depth):
 def get_camera_pos(rvecs, tvecs):
     rotM, j = cv2.Rodrigues(rvecs)
     cameraPosition = -np.matrix(rotM).transpose() * np.matrix(tvecs)
-    return cameraPosition
+    #OpenCV uses Z for up meanwhile OpenGL uses Y for up so swap it
+    #Coordinates converted to meters
+    return [cameraPosition[0]/100,-cameraPosition[2]/100,cameraPosition[1]/100]
 
 
 def get_cam_positions():
