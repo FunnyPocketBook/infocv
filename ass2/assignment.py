@@ -33,6 +33,7 @@ def get_camera_pos(rvecs, tvecs):
     cameraPosition = -np.matrix(rotM).transpose() * np.matrix(tvecs)
     #OpenCV uses Z for up meanwhile OpenGL uses Y for up so swap it
     #Coordinates converted to meters
+    #Swap sign for up since opencv uses -Z for up
     return [cameraPosition[0]/100,-cameraPosition[2]/100,cameraPosition[1]/100]
 
 
