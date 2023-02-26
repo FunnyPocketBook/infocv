@@ -9,8 +9,7 @@ block_size = 1.0
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
-    load_camera_properties()
-    subtract_background()
+    #subtract_background()
     data = []
     for x in range(width):
         for z in range(depth):
@@ -29,14 +28,34 @@ def set_voxel_positions(width, height, depth):
                     data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
     return data
 
+def get_camera_pos(rvecs, tvecs):
+    rotM, j = cv2.Rodrigues(rvecs)
+    cameraPosition = -np.matrix(rotM).transpose() * np.matrix(tvecs)
+    return cameraPosition
+
 
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
     # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
-    return [[-64 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, 63 * block_size],
-            [63 * block_size, 64 * block_size, -64 * block_size],
-            [-64 * block_size, 64 * block_size, -64 * block_size]]
+
+    #Cam1
+    cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
+    cam1pos = get_camera_pos(cam1rvecs, cam1tvecs)
+
+    #Cam2
+    cam2M, cam2d, cam2rvecs, cam2tvecs = load_camera_properties('cam2')
+    cam2pos = get_camera_pos(cam2rvecs, cam2tvecs)
+    #Cam3
+    cam3M, cam3d, cam3rvecs, cam3tvecs = load_camera_properties('cam3')
+    cam3pos = get_camera_pos(cam3rvecs, cam3tvecs)
+    #Cam4
+    cam4M, cam4d, cam4rvecs, cam4tvecs = load_camera_properties('cam4')
+    cam4pos = get_camera_pos(cam4rvecs, cam4tvecs)
+    
+    return [cam1pos,
+            cam2pos,
+            cam3pos,
+            cam4pos]
 
 
 def get_cam_rotation_matrices():
@@ -159,7 +178,8 @@ def subtract_background(path = 'ass2/data/cam1/'):
     return True
 
 #Load camera properties from folder directory
-def load_camera_properties(path = 'ass2/data/cam1/'):
+def load_camera_properties(cameraID = 'cam1'):
+    path = 'ass2/data/' + cameraID + '/'
     s = cv2.FileStorage(path + "config.xml", cv2.FILE_STORAGE_READ)
     camMatrix = s.getNode('CameraMatrix').mat()
     d = s.getNode('DistortionCoeffs').mat()
