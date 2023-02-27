@@ -19,11 +19,26 @@ def generate_grid(width, depth):
 def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
+    #Cam1
+    cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
+    cam1pos = get_camera_pos(cam1rvecs, cam1tvecs)
+    true_foreground = subtract_background()
+    cv2.imshow('Foreground',true_foreground)
+    cv2.waitKey(0)
     data = []
     for x in range(width):
         for y in range(height):
             for z in range(depth):
-                    data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
+                    Cx = x*block_size - width/2
+                    Cy = y*block_size
+                    Cz = z*block_size - depth/2
+                    points = np.float32([[Cx,Cy,Cz]])
+                    imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+                    point = tuple(map(int, imgpts[0].ravel()))
+                    color = true_foreground[point[0],point[1]]
+                    if color == 0:
+                        continue
+                    data.append([Cx, Cy, Cz])
     return data
 
 def get_camera_pos(rvecs, tvecs):
@@ -132,24 +147,24 @@ window_bar_name = 'Bars'
 #Get the new frame from the video per camera
 #Perform background subtraction on the new frame
 #Return true foreground
-def subtract_background(path = 'ass2/data/cam1/'):
+def subtract_background(cameraID = 'cam1'):
+    path = 'ass2/data/' + cameraID + '/'
     cap = cv2.VideoCapture(path + 'video.avi')
     background_image = cv2.imread(path + 'background.jpg')
     background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
     background_channels = cv2.split(background_imageHSV)
     kernelErode = np.ones((3, 3), np.uint8)
     kernelDialate = np.ones((3, 3), np.uint8)
-
     #Initialize UI elements
-    cv2.namedWindow(window_bar_name)
-    cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
-    cv2.createTrackbar(S_name, window_bar_name , threshhold_s, 255, on_low_S_thresh_trackbar)
-    cv2.createTrackbar(V_name, window_bar_name , threshhold_v, 255, on_low_V_thresh_trackbar)
+    #cv2.namedWindow(window_bar_name)
+    #cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
+    #cv2.createTrackbar(S_name, window_bar_name , threshhold_s, 255, on_low_S_thresh_trackbar)
+    #cv2.createTrackbar(V_name, window_bar_name , threshhold_v, 255, on_low_V_thresh_trackbar)
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        cv2.imshow('Frame ', frame)
+        #cv2.imshow('Frame ', frame)
         #cv2.waitKey(0)
         #cv2.destroyAllWindows()
         frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -164,7 +179,7 @@ def subtract_background(path = 'ass2/data/cam1/'):
         cv2.erode(im1,kernelErode,im1)
         cv2.dilate(im1,kernelDialate,im1)
         cv2.dilate(im1,kernelDialate,im1)
-        cv2.imshow('H ', im1)
+        #cv2.imshow('H ', im1)
 
         #S channel
         temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
@@ -172,23 +187,23 @@ def subtract_background(path = 'ass2/data/cam1/'):
         cv2.erode(im2,kernelErode,im2)
         cv2.erode(im2,kernelErode,im2)
         cv2.erode(im2,kernelErode,im2)
-        cv2.imshow('S ', im2)
+        #cv2.imshow('S ', im2)
         
         #V channel
         temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
         t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
         cv2.erode(im3,kernelErode,im3)
-        cv2.imshow('V ', im3)
+        #cv2.imshow('V ', im3)
         
         true_foreground = cv2.bitwise_or(im1, im2)
         true_foreground = cv2.bitwise_or(true_foreground, im3)
         cv2.dilate(true_foreground,kernelDialate,true_foreground)
         cv2.dilate(true_foreground,kernelDialate,true_foreground)
         
-        cv2.imshow('True foreground ', true_foreground)
-        cv2.waitKey(0)
+        #cv2.imshow('True foreground ', true_foreground)
+        #cv2.waitKey(0)
         #cv2.destroyAllWindows()
-
+        return true_foreground
         #code commet incase i need it
         #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
         #cv2.erode(foreground[1],kernelErode,foreground[1] )
@@ -196,7 +211,7 @@ def subtract_background(path = 'ass2/data/cam1/'):
         #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
 
     
-    return True
+    return None
 
 #Load camera properties from folder directory
 def load_camera_properties(cameraID = 'cam1'):
