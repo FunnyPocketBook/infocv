@@ -3,13 +3,12 @@ import glm
 import random
 import numpy as np
 
-block_size = 1.0
+block_size = 1
 
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
-    #subtract_background()
     data = []
     for x in range(width):
         for z in range(depth):
@@ -24,7 +23,6 @@ def set_voxel_positions(width, height, depth):
     for x in range(width):
         for y in range(height):
             for z in range(depth):
-                if random.randint(0, 1000) < 5:
                     data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
     return data
 
@@ -65,13 +63,6 @@ def get_extrensic_matrix(rvecs, tvecs):
     m44eye = np.identity(4)
     rotM, j = cv2.Rodrigues(rv)
     m44eye[:3, :3] = rotM
-    ts = tvecs.ravel()
-    #m44eye[:3,3] = ts
-    #Change sign on 2and and 3rd row to convert to correct coordinate system????
-    #https://stackoverflow.com/questions/44375149/opencv-to-opengl-coordinate-system-transform
-    for i in range(1,3):
-        for j in range(0,4):
-            m44eye[i][j] = -m44eye[i][j]
     return m44eye
 
 def get_cam_rotation_matrices():
@@ -90,8 +81,8 @@ def get_cam_rotation_matrices():
     #Cam4
     cam4M, cam4d, cam4rvecs, cam4tvecs = load_camera_properties('cam4')
     cam4M44 = get_extrensic_matrix(cam4rvecs, cam4tvecs)
-
-    cam_angles = [[0, 42, -45], [0, 135, -45], [0, 225, -45], [0, 315, -45]]
+    #OpenCV to OpenGL conversion?
+    cam_angles = [[0,0,90], [0,0,90], [0,0,90], [0,0,90]]
     cam_rotations = [glm.mat4(cam1M44), glm.mat4(cam2M44), glm.mat4(cam3M44), glm.mat4(cam4M44)]
     for c in range(len(cam_rotations)):
         cam_rotations[c] = glm.rotate(cam_rotations[c], cam_angles[c][0] * np.pi / 180, [1, 0, 0])
