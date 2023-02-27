@@ -93,11 +93,12 @@ def main():
     hdr_program.use()
     hdr_program.setInt('sceneMap', 0)
     hdr_program.setInt('bloomMap', 1)
+    window_width_px, window_height_px = glfw.get_framebuffer_size(window)
 
     hdrbuffer = HDRBuffer()
-    hdrbuffer.create(window_width, window_height)
+    hdrbuffer.create(window_width_px, window_height_px)
     blurbuffer = BlurBuffer()
-    blurbuffer.create(window_width, window_height)
+    blurbuffer.create(window_width_px, window_height_px)
 
     bloom = Bloom(hdrbuffer, hdr_program, blurbuffer, blur_program)
 
@@ -144,7 +145,8 @@ def main():
             cam.draw_multiple(depth_program)
 
         hdrbuffer.bind()
-        glViewport(0, 0, window_width, window_height)
+        window_width_px, window_height_px = glfw.get_framebuffer_size(window)
+        glViewport(0, 0, window_width_px, window_height_px)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         draw_objs(square, program, perspective, light_pos, texture_grid, normal_grid, specular_grid, depth_grid)
@@ -168,10 +170,11 @@ def resize_callback(window, w, h):
         global window_width, window_height, hdrbuffer, blurbuffer
         window_width, window_height = w, h
         glm.perspective(45, window_width / window_height, config['near_plane'], config['far_plane'])
+        window_width_px, window_height_px = glfw.get_framebuffer_size(window)
         hdrbuffer.delete()
-        hdrbuffer.create(window_width, window_height)
+        hdrbuffer.create(window_width_px, window_height_px)
         blurbuffer.delete()
-        blurbuffer.create(window_width, window_height)
+        blurbuffer.create(window_width_px, window_height_px)
 
 
 def key_callback(window, key, scancode, action, mods):
