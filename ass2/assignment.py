@@ -46,7 +46,7 @@ def set_voxel_positions(width, height, depth):
     for x in range(xL,xR, step):
         for z in range(zL,zR, step):
             for y in range(yL,yR, step):
-                points = np.float32([x,-z,-y])
+                points = np.float32([x,z,y])
                 imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
                 point = tuple(map(int, imgpts[0].ravel()))
                 color = true_foreground[point[1],point[0]]
