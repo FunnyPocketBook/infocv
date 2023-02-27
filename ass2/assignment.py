@@ -2,6 +2,7 @@ import cv2
 import glm
 import random
 import numpy as np
+import scipy.interpolate
 
 block_size = 1
 
@@ -21,8 +22,8 @@ def set_voxel_positions(width, height, depth):
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     #Cam1
     cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
-    cam1pos = get_camera_pos(cam1rvecs, cam1tvecs)
     true_foreground = subtract_background('cam1')
+    data = []
     #cv2.imshow('Foreground',true_foreground)
     #cv2.waitKey(0)
     xL = int(-width/2)
@@ -31,7 +32,18 @@ def set_voxel_positions(width, height, depth):
     yR = height
     zL = int(-depth/2)
     zR = int(depth/2)
-    data = []
+    #points = np.float32([[0,0,0],[1115,0,0],[0,1115,0],[0,0,-1115]])
+    #imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+    #point_one = tuple(map(int, imgpts[0].ravel()))
+    #point_two = tuple(map(int, imgpts[1].ravel()))
+    #point_three = tuple(map(int, imgpts[2].ravel()))
+    #point_four = tuple(map(int, imgpts[3].ravel()))
+    
+    #cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
+    #cv2.line(true_foreground, point_one, point_three, (255,255,0), 3) #to camera
+    #cv2.line(true_foreground, point_one, point_four, (255,0,255), 3) #going up
+    #cv2.imshow('Image',true_foreground)
+    #cv2.waitKey(0)
     #Bottom 4
     data.append([xL,yL,zL])
     data.append([xL,yL,zR])
@@ -42,17 +54,27 @@ def set_voxel_positions(width, height, depth):
     data.append([xL,yR,zR])
     data.append([xR,yR,zR])
     data.append([xR,yR,zL])
-    step = 4
-    for x in range(xL,xR, step):
-        for z in range(zL,zR, step):
-            for y in range(yL,yR, step):
-                points = np.float32([x,z,y])
+    step = 3
+
+    for x in range(0,width,step):
+        for y in range(0,height,step):
+            for z in range(0,depth,step):
+                #points = np.float32([[x*20,z*20,-y*30]])
+                Cx = np.interp(x,[0,width],[0,width*20])
+                Cy = np.interp(y,[0,height],[0,height*30])
+                Cz = np.interp(z,[0,depth],[0,depth*20])
+                points = np.float32([[Cx,Cz,-Cy]])
                 imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+                
                 point = tuple(map(int, imgpts[0].ravel()))
+                if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                    continue
                 color = true_foreground[point[1],point[0]]
-                if color > 0:
-                    data.append([x, y, z])
-                    
+                #true_foreground = cv2.circle(true_foreground, point,5, (122, 122, 255),5)
+                if color == 255:
+                    data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
+    cv2.imshow('Image',true_foreground)
+    cv2.waitKey(0)
     return data
 
 def get_camera_pos(rvecs, tvecs):

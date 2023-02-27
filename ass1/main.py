@@ -146,9 +146,9 @@ def draw_world_axis(img, rVecs, tVecs, cameraMatrix, dist, size=1):
     point_three = tuple(map(int, imgpts[2].ravel()))
     point_four = tuple(map(int, imgpts[3].ravel()))
     
-    cv.line(img, point_one, point_two, Color.RED, 3)
-    cv.line(img, point_one, point_three, Color.GREEN, 3)
-    cv.line(img, point_one, point_four, Color.BLUE, 3)
+    cv.line(img, point_one, point_two, Color.RED, 3) #going right
+    cv.line(img, point_one, point_three, Color.GREEN, 3) #to camera
+    cv.line(img, point_one, point_four, Color.BLUE, 3) #going up
     return img
 
 
