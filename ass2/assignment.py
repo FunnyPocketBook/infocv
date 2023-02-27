@@ -1,8 +1,6 @@
 import cv2
 import glm
-import random
 import numpy as np
-import scipy.interpolate
 
 block_size = 1
 
@@ -21,8 +19,9 @@ def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     #Cam1
-    cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
-    true_foreground = subtract_background('cam1')
+    # cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam3')
+    # true_foreground = subtract_background('cam3')
+    print("Generating voxel positions...")
     data = []
     #cv2.imshow('Foreground',true_foreground)
     #cv2.waitKey(0)
@@ -56,25 +55,60 @@ def set_voxel_positions(width, height, depth):
     data.append([xR,yR,zL])
     step = 3
 
+    camera_props = {}
+    true_foregrounds = {}
+    for cam in range(1,4):
+        camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
+        camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
+        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
+
+
     for x in range(0,width,step):
         for y in range(0,height,step):
             for z in range(0,depth,step):
                 #points = np.float32([[x*20,z*20,-y*30]])
                 Cx = np.interp(x,[0,width],[0,width*20])
-                Cy = np.interp(y,[0,height],[0,height*30])
+                Cy = np.interp(y,[0,height],[0,height*20])
                 Cz = np.interp(z,[0,depth],[0,depth*20])
                 points = np.float32([[Cx,Cz,-Cy]])
-                imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+                projected_points = []
                 
-                point = tuple(map(int, imgpts[0].ravel()))
-                if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                out_of_bounds = False
+                for cam in range(1,4):
+                    camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
+                    imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
+                    point = tuple(map(int, imgpts[0].ravel()))
+                    if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                        out_of_bounds = True
+                        break
+                    projected_points.append(point)
+                if out_of_bounds:    
                     continue
-                color = true_foreground[point[1],point[0]]
-                #true_foreground = cv2.circle(true_foreground, point,5, (122, 122, 255),5)
-                if color == 255:
+                intersection = True
+                for cam in range(1,4):
+                    true_foreground = true_foregrounds['cam'+str(cam)]
+                    point = projected_points[cam-1]
+                    color = true_foreground[point[1],point[0]]
+                    
+                    # true_foreground = cv2.circle(true_foreground, point,3, (122, 122, 255),3)
+                    if color != 255:
+                        intersection = False
+                        break
+                if intersection:
                     data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
-    cv2.imshow('Image',true_foreground)
-    cv2.waitKey(0)
+
+                # imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+                
+                # point = tuple(map(int, imgpts[0].ravel()))
+                # # if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                # #     continue
+                # color = true_foreground[point[1],point[0]]
+                # #true_foreground = cv2.circle(true_foreground, point,5, (122, 122, 255),5)
+                # if color == 255:
+                #     data.append([x*block_size - width/2, y*block_size, z*block_size - depth/2])
+    print("Done generating voxel positions...")
+    # cv2.imshow('Image',true_foreground)
+    # cv2.waitKey(0)
     return data
 
 def get_camera_pos(rvecs, tvecs):
