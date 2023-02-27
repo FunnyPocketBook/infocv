@@ -22,23 +22,37 @@ def set_voxel_positions(width, height, depth):
     #Cam1
     cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
     cam1pos = get_camera_pos(cam1rvecs, cam1tvecs)
-    true_foreground = subtract_background()
-    cv2.imshow('Foreground',true_foreground)
-    cv2.waitKey(0)
+    true_foreground = subtract_background('cam1')
+    #cv2.imshow('Foreground',true_foreground)
+    #cv2.waitKey(0)
+    xL = int(-width/2)
+    xR = int(width/2)
+    yL = 0
+    yR = height
+    zL = int(-depth/2)
+    zR = int(depth/2)
     data = []
-    for x in range(width):
-        for y in range(height):
-            for z in range(depth):
-                    Cx = x*block_size - width/2
-                    Cy = y*block_size
-                    Cz = z*block_size - depth/2
-                    points = np.float32([[Cx,Cy,Cz]])
-                    imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
-                    point = tuple(map(int, imgpts[0].ravel()))
-                    color = true_foreground[point[0],point[1]]
-                    if color == 0:
-                        continue
-                    data.append([Cx, Cy, Cz])
+    #Bottom 4
+    data.append([xL,yL,zL])
+    data.append([xL,yL,zR])
+    data.append([xR,yL,zR])
+    data.append([xR,yL,zL])
+    #Top 4
+    data.append([xL,yR,zL])
+    data.append([xL,yR,zR])
+    data.append([xR,yR,zR])
+    data.append([xR,yR,zL])
+    step = 4
+    for x in range(xL,xR, step):
+        for z in range(zL,zR, step):
+            for y in range(yL,yR, step):
+                points = np.float32([x,-z,-y])
+                imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
+                point = tuple(map(int, imgpts[0].ravel()))
+                color = true_foreground[point[1],point[0]]
+                if color > 0:
+                    data.append([x, y, z])
+                    
     return data
 
 def get_camera_pos(rvecs, tvecs):
