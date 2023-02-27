@@ -60,9 +60,9 @@ def set_voxel_positions(width, height, depth):
         for y in range(0,height,step):
             for z in range(0,depth,step):
                 #points = np.float32([[x*20,z*20,-y*30]])
-                Cx = np.interp(x,[0,width],[0,width*20])
-                Cy = np.interp(y,[0,height],[0,height*30])
-                Cz = np.interp(z,[0,depth],[0,depth*20])
+                Cx = np.interp(x,[0,width],[0,width*100])
+                Cy = np.interp(y,[0,height],[0,height*100])
+                Cz = np.interp(z,[0,depth],[0,depth*100])
                 points = np.float32([[Cx,Cz,-Cy]])
                 imgpts, jac = cv2.projectPoints(points, cam1rvecs, cam1tvecs, cam1M, cam1d)
                 
