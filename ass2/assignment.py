@@ -39,7 +39,7 @@ def set_voxel_positions(width, height, depth):
     yR = height
     zL = int(-depth/2)
     zR = int(depth/2)
-    pointsAxis = np.float32([[0,0,0],[1115,0,0],[0,1115,0],[0,0,-1115]])
+    #pointsAxis = np.float32([[0,0,0],[1115,0,0],[0,1115,0],[0,0,-1115]])
     #Start from -1115 to 1115 in xyz
     
     #cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
@@ -57,7 +57,7 @@ def set_voxel_positions(width, height, depth):
     data.append([xL,yR,zR])
     data.append([xR,yR,zR])
     data.append([xR,yR,zL])
-    step = 64
+    step = 32
 
     camera_props = {}
     true_foregrounds = {}
@@ -107,7 +107,8 @@ def set_voxel_positions(width, height, depth):
                         intersection = False
                         break
                 if intersection:
-                    data.append([x / width, y /height, z/depth])
+                    data.append([x / 50, y /50, z/50])
+                    #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
                     #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
     print("Done generating voxel positions...")
     return data
@@ -218,10 +219,9 @@ window_bar_name = 'Bars'
 #Get the new frame from the video per camera
 #Perform background subtraction on the new frame
 #Return true foreground
-def subtract_background(cameraID = 'cam1', index = 0):
+def subtract_background(cameraID = 'cam1'):
 
     path = 'ass2/data/' + cameraID + '/'
-
     cap = cv2.VideoCapture(path + 'video.avi')
     background_image = cv2.imread(path + 'background.jpg')
     background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
@@ -276,7 +276,7 @@ def subtract_background(cameraID = 'cam1', index = 0):
         #cv2.imshow('True foreground ', true_foreground)
         #cv2.waitKey(0)
         #cv2.destroyAllWindows()
-        return true_foreground, 2,3,4
+        return true_foreground
         #code commet incase i need it
         #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
         #cv2.erode(foreground[1],kernelErode,foreground[1] )
