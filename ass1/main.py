@@ -508,7 +508,7 @@ def clip_video(mtx, dist, rvecs, tvecs):
         The translation vectors.
     """
     print("Opening avi video...")
-    cap = cv.VideoCapture(VIDEO_PATH + 'Extrinsics/cam1_checkerboard.avi')
+    cap = cv.VideoCapture(VIDEO_PATH + 'Extrinsics/cam3_checkerboard.avi')
 
     while cap.isOpened():
         ret, frame = cap.read()
