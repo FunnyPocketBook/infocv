@@ -6,7 +6,7 @@ from engine.buffer.texture import *
 from engine.buffer.hdrbuffer import HDRBuffer
 from engine.buffer.blurbuffer import BlurBuffer
 from engine.effect.bloom import Bloom
-from assignment import set_voxel_positions, generate_grid, get_cam_positions, get_cam_rotation_matrices, construct_voxel_space
+from assignment import set_voxel_positions, generate_grid, get_cam_positions, get_cam_rotation_matrices, construct_voxel_space,generate_mesh
 from engine.camera import Camera
 from engine.config import config
 
@@ -118,12 +118,12 @@ def main():
     depth = load_texture_2d('ass2/resources/textures/depth.jpg')
     depth_grid = load_texture_2d('ass2/resources/textures/depth_grid.jpg')
 
-    grid_positions = generate_grid(config['world_width'], config['world_width'])
-    square.set_multiple_positions(grid_positions)
+    grid_positions, grid_colors = generate_grid(config['world_width'], config['world_width'])
+    square.set_multiple_positions(grid_positions, grid_colors)
 
-    cam_positions = get_cam_positions()
+    cam_positions, cam_colors = get_cam_positions()
     for c, cam_pos in enumerate(cam_positions):
-        cam_shapes[c].set_multiple_positions([cam_pos])
+        cam_shapes[c].set_multiple_positions([cam_pos],[cam_colors[c]])
 
     last_time = glfw.get_time()
     while not glfw.window_should_close(window):
@@ -136,8 +136,8 @@ def main():
 
         move_input(window, delta_time)
         if read_video:
-            positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
-            cube.set_multiple_positions(positions)
+            positions, colors = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
+            cube.set_multiple_positions(positions, colors)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glClearColor(0.1, 0.2, 0.8, 1)
@@ -189,9 +189,11 @@ def key_callback(window, key, scancode, action, mods):
         #positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
         #cube.set_multiple_positions(positions)
     if key == glfw.KEY_V and action == glfw.PRESS:
-        step_size = 64
+        step_size = 96
         space_half_size = 1000
         construct_voxel_space(step_size, space_half_size)
+    if key == glfw.KEY_B and action == glfw.PRESS:
+        generate_mesh()
 
 
 def mouse_move(win, pos_x, pos_y):
