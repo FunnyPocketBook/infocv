@@ -1,7 +1,18 @@
 import cv2
 import glm
 import numpy as np
-import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+import time
+
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(module)s: %(message)s", level=logging.INFO,
+    handlers=[
+        logging.FileHandler("log.log"),
+        logging.StreamHandler()
+    ])
+
+log = logging.getLogger(__name__)
+
 block_size = 1
 scalling_factor = 50
 
@@ -21,8 +32,14 @@ list_list_points = []
 listout_of_bounds = []
 frame_counter = 0
 
+# timers and counters
+set_voxel_positions_total_time = 0
+background_check_total_time = 0
+voxel_check_total_time = 0
+voxel_vis_total_time = 0
+
 def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
-    print("Generating voxel space...")
+    log.info("Generating voxel space...")
     camera_props = {}
     for cam in range(1,5):
         camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
@@ -46,18 +63,52 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
                 list_list_points.append(projected_points)
                 listout_of_bounds.append(out_of_bounds_a)
                 list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
-    print("Done generating voxel space...")
+    log.info("Done generating voxel space...")
     return list_voxels
 
 def check_voxel_visibility():
-    global frame_counter
+    global frame_counter, background_check_total_time, voxel_check_total_time, voxel_vis_total_time
+    start_time = time.time()
     data = []
     true_foregrounds = {}
-    for cam in range(1,5):
-        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
+    # subtract background for each camera in parallel
+    background_start = time.time()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(subtract_background, 'cam'+str(cam)) for cam in range(1,5)]
+        for future in as_completed(futures):
+            true_foregrounds[future.result()[0]] = future.result()[1]
+    # for cam in range(1,5):
+    #     true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))[1]
+    background_check_total_time += time.time() - background_start
+    # log.info("background check: " + str(time.time() - background_start))
+    voxel_start = time.time()
 
-    for i in range(len(list_voxels)):
+    def check_voxel_visibility_helper(list_voxels, i = 0):
+        valid_voxels = []
+        for voxel in list_voxels:
+            camera_counter = 0
+            for j in range(1,5):
+                if listout_of_bounds[i][j-1] == True:
+                    break
+                true_foreground = true_foregrounds['cam'+str(j)]
+                color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
+                if color == 255:
+                    camera_counter += 1
+                else:
+                    break
+            if camera_counter == 4:
+                valid_voxels.append(voxel)
+            i += 1
+        return valid_voxels
 
+    # n = 5
+    # with ThreadPoolExecutor(max_workers=n) as executor:
+    #     futures = [executor.submit(check_voxel_visibility_helper, sublist_voxel, i) for i, sublist_voxel in [(i * len(list_voxels) // n, list_voxels[i * len(list_voxels) // n:(i + 1) * len(list_voxels) // n]) for i in range(n)]]
+    #     for future in as_completed(futures):
+    #         if future.result() != []:
+    #             data.extend(future.result())
+        
+    for i, voxel in enumerate(list_voxels):
         camera_counter = 0
         for j in range(1,5):
             if listout_of_bounds[i][j-1] == True:
@@ -69,16 +120,21 @@ def check_voxel_visibility():
             else:
                 break
         if camera_counter == 4:
-            data.append(list_voxels[i])
+            data.append(voxel)
+    voxel_check_total_time += time.time() - voxel_start
+    # log.info("voxel check: " + str(time.time() - voxel_start))
     frame_counter  += 1
-    print(frame_counter)
+    voxel_vis_total_time += time.time() - start_time
+    # log.info(f"{frame_counter}, " + str(time.time() - start_time))
     return data
             
 
 def set_voxel_positions(width, height, depth):
+    global background_check_total_time, voxel_check_total_time, voxel_vis_total_time, frame_counter, set_voxel_positions_total_time
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
-    print("Generating voxel positions...")
+    log.info("Generating voxel positions...")
+    start_time = time.time()
     data = []
     xL = int(-width/2)
     xR = int(width/2)
@@ -98,7 +154,44 @@ def set_voxel_positions(width, height, depth):
     data.append([xR,yR,zL])
 
     data = data + check_voxel_visibility()
-    print("Done generating voxel positions...")
+    set_voxel_positions_total_time += time.time() - start_time
+    log.info("Done generating voxel positions...")
+    log.info(f"background check: {background_check_total_time/frame_counter}")
+    log.info(f"voxel check: {voxel_check_total_time/frame_counter}")
+    log.info(f"voxel vis: {voxel_vis_total_time/frame_counter}")
+    log.info(f"set voxel positions: {set_voxel_positions_total_time/frame_counter}")
+    log.info(f"frame_counter: {frame_counter}")
+
+    # threading
+    # n = 20
+    # 2023-03-01 20:46:39,997 [INFO] assignment: background check: 0.09625811151938864
+    # 2023-03-01 20:46:39,997 [INFO] assignment: voxel check: 0.15099544808416082
+    # 2023-03-01 20:46:39,998 [INFO] assignment: voxel vis: 0.24726348112125207
+    # 2023-03-01 20:46:39,998 [INFO] assignment: set voxel positions: 0.2475603405791934        
+    # 2023-03-01 20:46:39,999 [INFO] assignment: frame_counter: 101
+    #
+    # n = 5
+    # 2023-03-01 20:48:48,548 [INFO] assignment: background check: 0.09584083887610105
+    # 2023-03-01 20:48:48,549 [INFO] assignment: voxel check: 0.14461114146921894
+    # 2023-03-01 20:48:48,549 [INFO] assignment: voxel vis: 0.24045198034532
+    # 2023-03-01 20:48:48,550 [INFO] assignment: set voxel positions: 0.24068968130810425       
+    # 2023-03-01 20:48:48,550 [INFO] assignment: frame_counter: 101
+    #
+    # n = 1
+    # 2023-03-01 20:50:30,430 [INFO] assignment: background check: 0.09800923224722985
+    # 2023-03-01 20:50:30,431 [INFO] assignment: voxel check: 0.13898900475832496
+    # 2023-03-01 20:50:30,432 [INFO] assignment: voxel vis: 0.2369982370055548
+    # 2023-03-01 20:50:30,432 [INFO] assignment: set voxel positions: 0.23720121383666992       
+    # 2023-03-01 20:50:30,432 [INFO] assignment: frame_counter: 101
+    # 
+    # 
+    # no threading
+    # 
+    # 2023-03-01 20:45:32,689 [INFO] assignment: background check: 0.18298157370916687
+    # 2023-03-01 20:45:32,689 [INFO] assignment: voxel check: 0.12836335437132582
+    # 2023-03-01 20:45:32,689 [INFO] assignment: voxel vis: 0.3113449280804927
+    # 2023-03-01 20:45:32,689 [INFO] assignment: set voxel positions: 0.3115431247371258        
+    # 2023-03-01 20:45:32,690 [INFO] assignment: frame_counter: 101 
     return data
 
 def get_camera_pos(rvecs, tvecs):
@@ -229,7 +322,7 @@ def subtract_background(cameraID = 'cam1'):
     cap.set(1,frame_counter)
     ret, frame = cap.read()
     if not ret:
-        print("Video error")
+        log.error("Video error")
         return None
     #cv2.imshow('Frame ', frame)
     #cv2.waitKey(0)
@@ -275,7 +368,7 @@ def subtract_background(cameraID = 'cam1'):
     #cv2.erode(foreground[1],kernelErode,foreground[1] )
     #cv2.dilate(foreground[1],kernelDia,foreground[1] )
     #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
-    return true_foreground
+    return cameraID, true_foreground
 
 #Load camera properties from folder directory
 def load_camera_properties(cameraID = 'cam1'):
