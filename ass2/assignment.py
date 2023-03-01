@@ -9,7 +9,6 @@ scalling_factor = 50
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
-    construct_voxel_space(64)
     data = []
     for x in range(width):
         for z in range(depth):
@@ -20,25 +19,23 @@ def generate_grid(width, depth):
 list_voxels = []
 list_list_points = []
 listout_of_bounds = []
+frame_counter = 0
 
-def construct_voxel_space(step = 32):
+def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     print("Generating voxel space...")
     camera_props = {}
-    true_foregrounds = {}
     for cam in range(1,5):
         camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
         camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
-        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
 
-    for x in range(-1115,1115,step):
-        for y in range(0,2230,step):
-            for z in range(-1115,1115,step):
-                #points = np.float32([[x*20,z*20,-y*30]])
+    for x in range(-voxel_space_half_size,voxel_space_half_size,step):
+        for y in range(0,voxel_space_half_size * 2,step):
+            for z in range(-voxel_space_half_size,voxel_space_half_size,step):
                 points = np.float32([[x,z,-y]])
                 projected_points = []
                 out_of_bounds_a = []
-                out_of_bounds = False
                 for cam in range(1,5):
+                    out_of_bounds = False
                     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
                     imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
                     point = tuple(map(int, imgpts[0].ravel()))
@@ -49,12 +46,11 @@ def construct_voxel_space(step = 32):
                 list_list_points.append(projected_points)
                 listout_of_bounds.append(out_of_bounds_a)
                 list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
-                    #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
-                    #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
     print("Done generating voxel space...")
     return list_voxels
 
 def check_voxel_visibility():
+    global frame_counter
     data = []
     true_foregrounds = {}
     for cam in range(1,5):
@@ -74,33 +70,22 @@ def check_voxel_visibility():
                 break
         if camera_counter == 4:
             data.append(list_voxels[i])
+    frame_counter  += 1
+    print(frame_counter)
     return data
             
 
 def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
-    #Cam1
-    # cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam3')
-    # true_foreground = subtract_background('cam3')
     print("Generating voxel positions...")
     data = []
-    #cv2.imshow('Foreground',true_foreground)
-    #cv2.waitKey(0)
     xL = int(-width/2)
     xR = int(width/2)
     yL = 0
     yR = height
     zL = int(-depth/2)
     zR = int(depth/2)
-    #pointsAxis = np.float32([[0,0,0],[1115,0,0],[0,1115,0],[0,0,-1115]])
-    #Start from -1115 to 1115 in xyz
-    
-    #cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
-    #cv2.line(true_foreground, point_one, point_three, (255,255,0), 3) #to camera
-    #cv2.line(true_foreground, point_one, point_four, (255,0,255), 3) #going up
-    #cv2.imshow('Image',true_foreground)
-    #cv2.waitKey(0)
     #Bottom 4
     data.append([xL,yL,zL])
     data.append([xL,yL,zR])
@@ -111,57 +96,8 @@ def set_voxel_positions(width, height, depth):
     data.append([xL,yR,zR])
     data.append([xR,yR,zR])
     data.append([xR,yR,zL])
-    step = 32
-    data = data + check_voxel_visibility()
-    # camera_props = {}
-    # true_foregrounds = {}
-    # for cam in range(1,5):
-    #     camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
-    #     camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
-    #     true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
-    # #Test is axis are correct per camera
-    # # for cam in range(1,5):
-    # #     true_foreground = true_foregrounds['cam'+str(cam)]
-    # #     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
-    # #     imgpts, jac = cv2.projectPoints(pointsAxis, camrvecs, camtvecs, camM, camd)
-    # #     point_one = tuple(map(int, imgpts[0].ravel()))
-    # #     point_two = tuple(map(int, imgpts[1].ravel()))
-    # #     point_three = tuple(map(int, imgpts[2].ravel()))
-    # #     point_four = tuple(map(int, imgpts[3].ravel()))
-    # #     cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
-    # #     cv2.line(true_foreground, point_one, point_three, (255,255,0), 3) #to camera
-    # #     cv2.line(true_foreground, point_one, point_four, (255,0,255), 3) #going up
-    # #     cv2.imshow('Image' + str(cam),true_foreground)
-    # # cv2.waitKey(0)
 
-    # for x in range(-1115,1115,step):
-    #     for y in range(0,2230,step):
-    #         for z in range(-1115,1115,step):
-    #             #points = np.float32([[x*20,z*20,-y*30]])
-    #             points = np.float32([[x,z,-y]])
-    #             projected_points = []
-                
-    #             out_of_bounds = False
-    #             for cam in range(1,5):
-    #                 camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
-    #                 imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
-    #                 point = tuple(map(int, imgpts[0].ravel()))
-    #                 if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
-    #                     out_of_bounds = True
-    #                     break
-    #                 projected_points.append(point)
-    #             if out_of_bounds:    
-    #                 continue
-    #             intersection = True
-    #             for cam in range(1,5):
-    #                 true_foreground = true_foregrounds['cam'+str(cam)]
-    #                 point = projected_points[cam-1]
-    #                 color = true_foreground[point[1],point[0]]
-    #                 if color != 255:
-    #                     intersection = False
-    #                     break
-    #             if intersection:
-    #                 data.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
+    data = data + check_voxel_visibility()
     print("Done generating voxel positions...")
     return data
 
@@ -272,9 +208,12 @@ window_bar_name = 'Bars'
 #Perform background subtraction on the new frame
 #Return true foreground
 def subtract_background(cameraID = 'cam1'):
-
+    global frame_counter
     path = 'ass2/data/' + cameraID + '/'
     cap = cv2.VideoCapture(path + 'video.avi')
+    #fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    #duration = frame_count/fps
     background_image = cv2.imread(path + 'background.jpg')
     background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
     background_channels = cv2.split(background_imageHSV)
@@ -285,58 +224,58 @@ def subtract_background(cameraID = 'cam1'):
     #cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
     #cv2.createTrackbar(S_name, window_bar_name , threshhold_s, 255, on_low_S_thresh_trackbar)
     #cv2.createTrackbar(V_name, window_bar_name , threshhold_v, 255, on_low_V_thresh_trackbar)
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        #cv2.imshow('Frame ', frame)
-        #cv2.waitKey(0)
-        #cv2.destroyAllWindows()
-        frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
-        frame_channels = cv2.split(blurred)
+    if  frame_counter > frame_count:
+        frame_counter = 0
+    cap.set(1,frame_counter)
+    ret, frame = cap.read()
+    if not ret:
+        print("Video error")
+        return None
+    #cv2.imshow('Frame ', frame)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+    frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
+    frame_channels = cv2.split(blurred)
 
-        #H channel
-        temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
-        t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.dilate(im1,kernelDialate,im1)
-        cv2.dilate(im1,kernelDialate,im1)
-        #cv2.imshow('H ', im1)
+    #H channel
+    temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
+    t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
+    cv2.erode(im1,kernelErode,im1)
+    cv2.erode(im1,kernelErode,im1)
+    cv2.erode(im1,kernelErode,im1)
+    cv2.dilate(im1,kernelDialate,im1)
+    cv2.dilate(im1,kernelDialate,im1)
+    #cv2.imshow('H ', im1)
 
-        #S channel
-        temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
-        t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im2,kernelErode,im2)
-        cv2.erode(im2,kernelErode,im2)
-        cv2.erode(im2,kernelErode,im2)
-        #cv2.imshow('S ', im2)
-        
-        #V channel
-        temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
-        t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im3,kernelErode,im3)
-        #cv2.imshow('V ', im3)
-        
-        true_foreground = cv2.bitwise_or(im1, im2)
-        true_foreground = cv2.bitwise_or(true_foreground, im3)
-        cv2.dilate(true_foreground,kernelDialate,true_foreground)
-        cv2.dilate(true_foreground,kernelDialate,true_foreground)
-        
-        #cv2.imshow('True foreground ', true_foreground)
-        #cv2.waitKey(0)
-        #cv2.destroyAllWindows()
-        return true_foreground
-        #code commet incase i need it
-        #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
-        #cv2.erode(foreground[1],kernelErode,foreground[1] )
-        #cv2.dilate(foreground[1],kernelDia,foreground[1] )
-        #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
-
+    #S channel
+    temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
+    t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
+    cv2.erode(im2,kernelErode,im2)
+    cv2.erode(im2,kernelErode,im2)
+    cv2.erode(im2,kernelErode,im2)
+    #cv2.imshow('S ', im2)
     
-    return None
+    #V channel
+    temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
+    t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
+    cv2.erode(im3,kernelErode,im3)
+    #cv2.imshow('V ', im3)
+    
+    true_foreground = cv2.bitwise_or(im1, im2)
+    true_foreground = cv2.bitwise_or(true_foreground, im3)
+    cv2.dilate(true_foreground,kernelDialate,true_foreground)
+    cv2.dilate(true_foreground,kernelDialate,true_foreground)
+    
+    #cv2.imshow('True foreground ', true_foreground)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+    #code commet incase i need it
+    #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
+    #cv2.erode(foreground[1],kernelErode,foreground[1] )
+    #cv2.dilate(foreground[1],kernelDia,foreground[1] )
+    #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
+    return true_foreground
 
 #Load camera properties from folder directory
 def load_camera_properties(cameraID = 'cam1'):
