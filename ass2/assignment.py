@@ -17,12 +17,59 @@ def generate_grid(width, depth):
 global list_voxels
 global list_list_points
 global listout_of_bounds
-#list_voxels[5] -> list_list_points[5][1,2,3,4]
-#list_voxels[5] -> listout_of_bounds[5][1,2,3,4]
 
-def construct_voxel_space():
-    
+def construct_voxel_space(step = 32):
+    camera_props = {}
+    true_foregrounds = {}
+    for cam in range(1,5):
+        camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
+        camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
+        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
+
+    for x in range(-1115,1115,step):
+        for y in range(0,2230,step):
+            for z in range(-1115,1115,step):
+                #points = np.float32([[x*20,z*20,-y*30]])
+                points = np.float32([[x,z,-y]])
+                projected_points = []
+                
+                out_of_bounds = False
+                for cam in range(1,5):
+                    camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
+                    imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
+                    point = tuple(map(int, imgpts[0].ravel()))
+                    if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                        out_of_bounds = True
+                    projected_points.append(point)
+                list_list_points.append(projected_points)
+                listout_of_bounds.append(out_of_bounds)
+                list_voxels.append([x / 25, y /25, z/25])
+                    #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
+                    #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
+    print("Done generating voxel positions...")
+    return list_voxels
+
+def check_voxel_visibility():
+
+    true_foregrounds = {}
+    for cam in range(1,5):
+        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
+
+    for i in range(list_voxels):
+        if listout_of_bounds[i] == True:
+            continue
+        camera_counter = 0
+        for j in range(list_list_points[i]):
+            true_foreground = true_foregrounds[j + 1]
+            color = true_foreground[list_list_points[i][j][1],list_list_points[i][j][0]]
+            if color == 255:
+                camera_counter += 1
+        if camera_counter == 4:
+            #list_voxels[i].setRenderer == True
+            print('Voxel is visible')
     return True
+            
+
 def set_voxel_positions(width, height, depth):
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
@@ -107,7 +154,9 @@ def set_voxel_positions(width, height, depth):
                         intersection = False
                         break
                 if intersection:
-                    data.append([x / 50, y /50, z/50])
+                    #data.append([x / 25, y /25, z/25])
+                    data.append([np.interp(x,[-10,10],[-1115,1115]),np.interp(y,[0,20],[0,2230]),np.interp(z,[-10,10],[-1115,1115])])
+                    print(x)
                     #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
                     #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
     print("Done generating voxel positions...")
@@ -119,7 +168,7 @@ def get_camera_pos(rvecs, tvecs):
     #OpenCV Y down, Z forward meanwhile OpenGL uses Y for up so swap it
     #Coordinates converted to meters
     #Swap sign for up since opencv uses -Z
-    return [cameraPosition[0]/100,-cameraPosition[2]/100,cameraPosition[1]/100]
+    return [cameraPosition[0]/50,-cameraPosition[2]/50,cameraPosition[1]/50]
 
 
 def get_cam_positions():
