@@ -3,22 +3,26 @@ import glm
 import numpy as np
 import copy
 block_size = 1
+scalling_factor = 50
 
 
 def generate_grid(width, depth):
     # Generates the floor grid locations
     # You don't need to edit this function
+    construct_voxel_space(64)
     data = []
     for x in range(width):
         for z in range(depth):
             data.append([x*block_size - width/2, -block_size, z*block_size - depth/2])
     return data
 
-global list_voxels
-global list_list_points
-global listout_of_bounds
+#Globals
+list_voxels = []
+list_list_points = []
+listout_of_bounds = []
 
 def construct_voxel_space(step = 32):
+    print("Generating voxel space...")
     camera_props = {}
     true_foregrounds = {}
     for cam in range(1,5):
@@ -32,7 +36,7 @@ def construct_voxel_space(step = 32):
                 #points = np.float32([[x*20,z*20,-y*30]])
                 points = np.float32([[x,z,-y]])
                 projected_points = []
-                
+                out_of_bounds_a = []
                 out_of_bounds = False
                 for cam in range(1,5):
                     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
@@ -41,33 +45,36 @@ def construct_voxel_space(step = 32):
                     if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
                         out_of_bounds = True
                     projected_points.append(point)
+                    out_of_bounds_a.append(out_of_bounds)
                 list_list_points.append(projected_points)
-                listout_of_bounds.append(out_of_bounds)
-                list_voxels.append([x / 25, y /25, z/25])
+                listout_of_bounds.append(out_of_bounds_a)
+                list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
                     #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
                     #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
-    print("Done generating voxel positions...")
+    print("Done generating voxel space...")
     return list_voxels
 
 def check_voxel_visibility():
-
+    data = []
     true_foregrounds = {}
     for cam in range(1,5):
         true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
 
-    for i in range(list_voxels):
-        if listout_of_bounds[i] == True:
-            continue
+    for i in range(len(list_voxels)):
+
         camera_counter = 0
-        for j in range(list_list_points[i]):
-            true_foreground = true_foregrounds[j + 1]
-            color = true_foreground[list_list_points[i][j][1],list_list_points[i][j][0]]
+        for j in range(1,5):
+            if listout_of_bounds[i][j-1] == True:
+                break
+            true_foreground = true_foregrounds['cam'+str(j)]
+            color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
             if color == 255:
                 camera_counter += 1
+            else:
+                break
         if camera_counter == 4:
-            #list_voxels[i].setRenderer == True
-            print('Voxel is visible')
-    return True
+            data.append(list_voxels[i])
+    return data
             
 
 def set_voxel_positions(width, height, depth):
@@ -105,60 +112,56 @@ def set_voxel_positions(width, height, depth):
     data.append([xR,yR,zR])
     data.append([xR,yR,zL])
     step = 32
-
-    camera_props = {}
-    true_foregrounds = {}
-    for cam in range(1,5):
-        camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
-        camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
-        true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
-    #Test is axis are correct per camera
+    data = data + check_voxel_visibility()
+    # camera_props = {}
+    # true_foregrounds = {}
     # for cam in range(1,5):
-    #     true_foreground = true_foregrounds['cam'+str(cam)]
-    #     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
-    #     imgpts, jac = cv2.projectPoints(pointsAxis, camrvecs, camtvecs, camM, camd)
-    #     point_one = tuple(map(int, imgpts[0].ravel()))
-    #     point_two = tuple(map(int, imgpts[1].ravel()))
-    #     point_three = tuple(map(int, imgpts[2].ravel()))
-    #     point_four = tuple(map(int, imgpts[3].ravel()))
-    #     cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
-    #     cv2.line(true_foreground, point_one, point_three, (255,255,0), 3) #to camera
-    #     cv2.line(true_foreground, point_one, point_four, (255,0,255), 3) #going up
-    #     cv2.imshow('Image' + str(cam),true_foreground)
-    # cv2.waitKey(0)
+    #     camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
+    #     camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
+    #     true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))
+    # #Test is axis are correct per camera
+    # # for cam in range(1,5):
+    # #     true_foreground = true_foregrounds['cam'+str(cam)]
+    # #     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
+    # #     imgpts, jac = cv2.projectPoints(pointsAxis, camrvecs, camtvecs, camM, camd)
+    # #     point_one = tuple(map(int, imgpts[0].ravel()))
+    # #     point_two = tuple(map(int, imgpts[1].ravel()))
+    # #     point_three = tuple(map(int, imgpts[2].ravel()))
+    # #     point_four = tuple(map(int, imgpts[3].ravel()))
+    # #     cv2.line(true_foreground, point_one, point_two, (255,0,0), 3) #going right
+    # #     cv2.line(true_foreground, point_one, point_three, (255,255,0), 3) #to camera
+    # #     cv2.line(true_foreground, point_one, point_four, (255,0,255), 3) #going up
+    # #     cv2.imshow('Image' + str(cam),true_foreground)
+    # # cv2.waitKey(0)
 
-    for x in range(-1115,1115,step):
-        for y in range(0,2230,step):
-            for z in range(-1115,1115,step):
-                #points = np.float32([[x*20,z*20,-y*30]])
-                points = np.float32([[x,z,-y]])
-                projected_points = []
+    # for x in range(-1115,1115,step):
+    #     for y in range(0,2230,step):
+    #         for z in range(-1115,1115,step):
+    #             #points = np.float32([[x*20,z*20,-y*30]])
+    #             points = np.float32([[x,z,-y]])
+    #             projected_points = []
                 
-                out_of_bounds = False
-                for cam in range(1,5):
-                    camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
-                    imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
-                    point = tuple(map(int, imgpts[0].ravel()))
-                    if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
-                        out_of_bounds = True
-                        break
-                    projected_points.append(point)
-                if out_of_bounds:    
-                    continue
-                intersection = True
-                for cam in range(1,5):
-                    true_foreground = true_foregrounds['cam'+str(cam)]
-                    point = projected_points[cam-1]
-                    color = true_foreground[point[1],point[0]]
-                    if color != 255:
-                        intersection = False
-                        break
-                if intersection:
-                    #data.append([x / 25, y /25, z/25])
-                    data.append([np.interp(x,[-10,10],[-1115,1115]),np.interp(y,[0,20],[0,2230]),np.interp(z,[-10,10],[-1115,1115])])
-                    print(x)
-                    #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
-                    #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
+    #             out_of_bounds = False
+    #             for cam in range(1,5):
+    #                 camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
+    #                 imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
+    #                 point = tuple(map(int, imgpts[0].ravel()))
+    #                 if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+    #                     out_of_bounds = True
+    #                     break
+    #                 projected_points.append(point)
+    #             if out_of_bounds:    
+    #                 continue
+    #             intersection = True
+    #             for cam in range(1,5):
+    #                 true_foreground = true_foregrounds['cam'+str(cam)]
+    #                 point = projected_points[cam-1]
+    #                 color = true_foreground[point[1],point[0]]
+    #                 if color != 255:
+    #                     intersection = False
+    #                     break
+    #             if intersection:
+    #                 data.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
     print("Done generating voxel positions...")
     return data
 
@@ -168,7 +171,7 @@ def get_camera_pos(rvecs, tvecs):
     #OpenCV Y down, Z forward meanwhile OpenGL uses Y for up so swap it
     #Coordinates converted to meters
     #Swap sign for up since opencv uses -Z
-    return [cameraPosition[0]/50,-cameraPosition[2]/50,cameraPosition[1]/50]
+    return [cameraPosition[0]/scalling_factor,-cameraPosition[2]/scalling_factor,cameraPosition[1]/scalling_factor]
 
 
 def get_cam_positions():
