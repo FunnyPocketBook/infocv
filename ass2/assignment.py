@@ -2,7 +2,17 @@ import cv2
 import glm
 import numpy as np
 import copy
+import logging
+import pickle
+from pathlib import Path
 block_size = 1
+
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(module)s: %(message)s", level=logging.INFO,
+    handlers=[
+        logging.FileHandler("logging.log"),
+        logging.StreamHandler()
+    ])
+log = logging.getLogger(__name__)
 
 
 def generate_grid(width, depth):
@@ -20,16 +30,53 @@ global listout_of_bounds
 #list_voxels[5] -> list_list_points[5][1,2,3,4]
 #list_voxels[5] -> listout_of_bounds[5][1,2,3,4]
 
-def construct_voxel_space():
+def construct_voxel_space(width, height, depth):
+    voxels = []
+    masks = subtract_background_all()
+    log.info("Generating voxel positions for all cameras...")
+    step = 32
     
-    return True
+    for cam in range(1,5):
+        log.info("Generating voxel positions for camera "+str(cam)+"...")
+        for mask in masks['cam'+str(cam)]:
+            voxel_frame = []
+            for x in range(-1115,1115,step):
+                for y in range(0,2230,step):
+                    for z in range(-1115,1115,step):
+                        voxel_point = np.float32([[x,z,-y]])
+                        camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
+                        imgpts, jac = cv2.projectPoints(voxel_point, camrvecs, camtvecs, camM, camd)
+                        projected_point = tuple(map(int, imgpts[0].ravel()))
+                        if not is_out_of_bounds(projected_point, mask) and mask[projected_point[1]][projected_point[0]] == 255:
+                            voxel_frame.append([x/50, y/50, z/50])
+            voxels.append(voxel_frame)
+        log.info("Finished generating voxel positions for camera "+str(cam)+"...")
+    # write to file
+    log.info("Writing voxel positions to file...")
+    with open('voxels.pkl', 'wb') as f:
+        pickle.dump(voxels, f)
+
+    return voxels
+
+
+def is_out_of_bounds(point, mask):
+    if point[0] < 0 or point[0] >= mask.shape[1]:
+        return True
+    if point[1] < 0 or point[1] >= mask.shape[0]:
+        return True
+    if mask[point[1]][point[0]] == 0:
+        return True
+    return False
+
+
 def set_voxel_positions(width, height, depth):
+    construct_voxel_space(width, height, depth)
+    return []
     # Generates random voxel locations
-    # TODO: You need to calculate proper voxel arrays instead of random ones.
     #Cam1
     # cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam3')
     # true_foreground = subtract_background('cam3')
-    print("Generating voxel positions...")
+    log.info("Generating voxel positions...")
     data = []
     #cv2.imshow('Foreground',true_foreground)
     #cv2.waitKey(0)
@@ -110,7 +157,7 @@ def set_voxel_positions(width, height, depth):
                     data.append([x / 50, y /50, z/50])
                     #Append all coordinates. Instead disable or enable renderer on the voxels that are color == 255
                     #[x*block_size - width/2, y*block_size, z*block_size - depth/2]
-    print("Done generating voxel positions...")
+    log.info("Done generating voxel positions...")
     return data
 
 def get_camera_pos(rvecs, tvecs):
@@ -124,7 +171,6 @@ def get_camera_pos(rvecs, tvecs):
 
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
-    # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
 
     #Cam1
     cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
@@ -211,6 +257,93 @@ S_name = 'S'
 V_name = 'V'
 window_bar_name = 'Bars'
 
+def subtract_background_all() -> dict:
+    """
+    Generates a foreground mask for each camera for each frame in the video
+    
+    Returns:
+        dict: A dictionary of the form {cam1: [mask1, mask2, ...], cam2: [mask1, mask2, ...], ...}
+    """
+    masks = {}
+    video_path = 'ass2/data/cam{}/video.avi'
+    kernelErode = np.ones((3, 3), np.uint8)
+    kernelDilate = np.ones((5, 5), np.uint8)
+    for i in range(1,5):
+        log.info(f"Processing foreground mask for camera {i}")
+        background_image = cv2.imread(f'ass2/data/cam{i}/background.jpg')
+        background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
+        background_channels = cv2.split(background_imageHSV)
+        cap = cv2.VideoCapture(video_path.format(i))
+        masks[f"cam{i}"] = []
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            masks[f"cam{i}"].append(subtract_background(frame, background_channels, kernelErode, kernelDilate, threshhold_h, threshhold_s, threshhold_v))
+        cap.release()
+        log.info(f"Finished processing foreground mask for camera {i}")
+    # for i in range(len(masks["cam1"])):
+    #     cv2.imshow("cam1", masks["cam1"][i])
+    #     cv2.imshow("cam2", masks["cam2"][i])
+    #     cv2.imshow("cam3", masks["cam3"][i])
+    #     cv2.imshow("cam4", masks["cam4"][i])
+    #     cv2.waitKey(1000//24)
+    # cv2.destroyAllWindows()
+    return masks
+
+
+
+
+def subtract_background(frame, background_channels, kernelErode, kernelDilate, threshhold_h, threshhold_s, threshhold_v):
+    """Subtracts background from frame and returns mask of that one frame
+    
+    Arguments:
+        frame {np.array} -- Frame to subtract background from
+        background_channels {np.array} -- Background channels
+        kernelErode {np.array} -- Erode kernel
+        kernelDilate {np.array} -- Dilate kernel
+        threshhold_h {int} -- H channel threshold
+        threshhold_s {int} -- S channel threshold
+        threshhold_v {int} -- V channel threshold
+
+    Returns:
+        np.array -- Mask
+    """
+    #Convert to HSV
+    frame_HSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    #Split channels
+    channels = cv2.split(frame_HSV)
+
+    #Subtract background
+    h = cv2.absdiff(channels[0], background_channels[0])
+    s = cv2.absdiff(channels[1], background_channels[1])
+    v = cv2.absdiff(channels[2], background_channels[2])
+
+    #Threshold channels
+    ret, h = cv2.threshold(h, threshhold_h, 255, cv2.THRESH_BINARY)
+    ret, s = cv2.threshold(s, threshhold_s, 255, cv2.THRESH_BINARY)
+    ret, v = cv2.threshold(v, threshhold_v, 255, cv2.THRESH_BINARY)
+
+    #Erode and dilate
+    h = cv2.erode(h, kernelErode, iterations=3)
+    h = cv2.dilate(h, kernelDilate, iterations=2)
+    s = cv2.erode(s, kernelErode, iterations=3)
+    # s = cv2.dilate(s, kernelDilate, iterations=1)
+    v = cv2.erode(v, kernelErode, iterations=1)
+    # v = cv2.dilate(v, kernelDilate, iterations=1)
+
+    #Combine channels
+    mask = cv2.bitwise_and(h, s)
+    mask = cv2.bitwise_and(mask, v)
+    mask = cv2.dilate(mask, kernelDilate, iterations=2)
+
+    return mask
+
+
+
+
+
 #Load files from directory and subtract background from video
 #TODO: File loading should probablty be in a separate function so files are not loaded on each update
 #TODO: rewrite the function so it works like this:
@@ -219,7 +352,7 @@ window_bar_name = 'Bars'
 #Get the new frame from the video per camera
 #Perform background subtraction on the new frame
 #Return true foreground
-def subtract_background(cameraID = 'cam1'):
+def subtracts_background(cameraID = 'cam1'):
 
     path = 'ass2/data/' + cameraID + '/'
     cap = cv2.VideoCapture(path + 'video.avi')
@@ -237,7 +370,7 @@ def subtract_background(cameraID = 'cam1'):
         ret, frame = cap.read()
         if not ret:
             break
-        #cv2.imshow('Frame ', frame)
+        # cv2.imshow('Frame ', frame)
         #cv2.waitKey(0)
         #cv2.destroyAllWindows()
         frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -247,35 +380,29 @@ def subtract_background(cameraID = 'cam1'):
         #H channel
         temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
         t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.erode(im1,kernelErode,im1)
-        cv2.dilate(im1,kernelDialate,im1)
-        cv2.dilate(im1,kernelDialate,im1)
-        #cv2.imshow('H ', im1)
+        im1 = cv2.erode(im1,kernelErode, iterations = 3)
+        im1 = cv2.dilate(im1,kernelDialate, iterations=2)
+        # cv2.imshow('H ', im1)
 
         #S channel
         temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
         t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im2,kernelErode,im2)
-        cv2.erode(im2,kernelErode,im2)
-        cv2.erode(im2,kernelErode,im2)
-        #cv2.imshow('S ', im2)
+        im2 = cv2.erode(im2,kernelErode, iterations = 3)
+        # cv2.imshow('S ', im2)
         
         #V channel
         temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
         t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
-        cv2.erode(im3,kernelErode,im3)
-        #cv2.imshow('V ', im3)
+        im3 = cv2.erode(im3,kernelErode,)
+        # cv2.imshow('V ', im3)
         
         true_foreground = cv2.bitwise_or(im1, im2)
         true_foreground = cv2.bitwise_or(true_foreground, im3)
-        cv2.dilate(true_foreground,kernelDialate,true_foreground)
-        cv2.dilate(true_foreground,kernelDialate,true_foreground)
+        true_foreground = cv2.dilate(true_foreground, kernelDialate, iterations=2)
         
-        #cv2.imshow('True foreground ', true_foreground)
-        #cv2.waitKey(0)
-        #cv2.destroyAllWindows()
+        cv2.imshow('True foreground ', true_foreground)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
         return true_foreground
         #code commet incase i need it
         #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
