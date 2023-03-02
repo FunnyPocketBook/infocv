@@ -41,6 +41,7 @@ lookup_projected_to_voxel = [{}] * 4
 # ]
 previous_foregrounds = {}
 frame_counter = 0
+total_time = 0
 
 def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     log.info("Generating voxel space...")
@@ -73,13 +74,16 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     return list_voxels
 
 def check_voxel_visibility():
-    global frame_counter, previous_foregrounds, set_of_displayed_voxels, list_of_displayed_voxels
+    global frame_counter, previous_foregrounds, set_of_displayed_voxels, list_of_displayed_voxels, total_time
     data = []
     true_foregrounds = {}
+    f_start = time.time()
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(subtract_background, 'cam'+str(cam)) for cam in range(1,5)]
         for future in as_completed(futures):
             true_foregrounds[future.result()[0]] = future.result()[1]
+    f_end = time.time()
+    # log.info("Time to get foregrounds: " + str(f_end - f_start))
     new_white = {
         "cam1": [],
         "cam2": [],
@@ -114,6 +118,7 @@ def check_voxel_visibility():
         return data
     
     # Get the difference between the current foreground and the previous foreground
+    foreground_start = time.time()
     for cam in range(1,5):
         previous_foreground = previous_foregrounds['cam'+str(cam)]
         current_foreground = true_foregrounds['cam'+str(cam)]
@@ -130,98 +135,37 @@ def check_voxel_visibility():
         # cv2.imshow('cam4 current foreground', current_foreground)
         # cv2.imshow('cam4 previous foreground', previous_foreground)
         # cv2.waitKey(1)
+    foreground_end = time.time()
+    # log.info("Foreground difference time: " + str(foreground_end - foreground_start))
 
 
-    # Get the value of all pixels that are white in the new white mask
-    
-    # for cam in range(1,5):
-    #     new_white_mask = new_white['cam'+str(cam)]
-    #     new_black_mask = new_black['cam'+str(cam)]
-    #     # Create a list of all the points that are white in the new white mask
-    #     new_white_points = [(x, y) for x, y in np.transpose(np.where(new_white_mask == 255))]
-    #     new_black_points = [(x, y) for x, y in np.transpose(np.where(new_black_mask == 0))]
-    #     # For each point in the new white points list, check if it is in the lookup table
-    #     for point in new_white_points:
-    #         if point in lookup_projected_to_voxel[cam-1]:
-    #             # If it is, add the voxel to the list of displayed voxels
-    #             voxel = lookup_projected_to_voxel[cam-1][point]
-    #             if voxel not in list_of_displayed_voxels:
-    #                 list_of_displayed_voxels.append(voxel)
-    #                 # data.append(voxel)
-    #     for point in new_black_points:
-    #         if point in lookup_projected_to_voxel[cam-1]:
-    #             # If it is, add the voxel to the list of displayed voxels
-    #             voxel = lookup_projected_to_voxel[cam-1][point]
-    #             if voxel in list_of_displayed_voxels:
-    #                 list_of_displayed_voxels.remove(voxel)
-
-
-
+    voxel_all_cam_start = time.time()
     for cam in range(1, 5):
         new_white_mask = new_white['cam'+str(cam)]
         new_black_mask = new_black['cam'+str(cam)]
         
+        # time in ms
+        transpose_start = time.time()
         # Find the indices of white and black points in the masks
         white_indices = np.transpose(np.where(new_white_mask == 255))
         black_indices = np.transpose(np.where(new_black_mask == 255))
-        
-        # Find the intersection of the white points and the lookup table for this camera
-        #white_voxels = tuple([tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in white_indices if tuple(p) in lookup_projected_to_voxel[cam-1]])
-        # write above line without list comprehension
-        # white_voxels = []
-        # black_voxels = []
-        white_start = time.time()
+        transpose_end = time.time()
+        # log.info("Transpose time: " + str(transpose_end - transpose_start))
+
+        voxel_start = time.time()
         white_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in white_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
         black_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in black_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
-        # for p in white_indices:
-        #     if tuple(p) in lookup_projected_to_voxel[cam-1]:
-        #         point = tuple(p)
-        #         voxel = lookup_projected_to_voxel[cam-1][point]
-        #         white_voxels.append(tuple(voxel))
-
-                
-        # for p in black_indices:
-        #     if tuple(p) in lookup_projected_to_voxel[cam-1]:
-        #         point = tuple(p)
-        #         voxel = lookup_projected_to_voxel[cam-1][point]
-        #         black_voxels.append(tuple(voxel))
-        white_end = time.time()
-        log.info(f"White voxels: {white_end - white_start}")
-        # Add the new white voxels to the displayed set
+        voxel_end = time.time()
+        # log.info("Voxel time: " + str(voxel_end - voxel_start))
         set_of_displayed_voxels.update(white_voxels)
-        # data.extend(white_voxels)
-        
-        # Find the intersection of the black points and the displayed voxels
-        # black_voxels = tuple([tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in black_indices if tuple(p) in lookup_projected_to_voxel[cam-1] and lookup_projected_to_voxel[cam-1][tuple(p)] in set_of_displayed_voxels])
-        
-        # Remove the black voxels from the displayed set
         set_of_displayed_voxels.difference_update(black_voxels)
-        # data.extend(black_voxels)
-
-        
-
-
-
-
-    # for i, voxel in enumerate(list_voxels):
-    #     camera_counter = 0
-    #     for j in range(1,5):
-    #         if list_out_of_bounds[i][j-1] == True:
-    #             break
-    #         true_foreground = true_foregrounds['cam'+str(j)]
-    #         color = true_foreground[list_projected_points[i][j-1][1],list_projected_points[i][j-1][0]]
-    #         if color == 255:
-    #             camera_counter += 1
-    #         else:
-    #             break
-    #     if camera_counter == 4:
-    #         list_of_displayed_voxels.append(voxel)
-    #         data.append(voxel)
+    voxel_all_cam_end = time.time()
+    # log.info("Voxel all cam time: " + str(voxel_all_cam_end - voxel_all_cam_start))
 
     frame_counter  += 1
+    log.info(frame_counter)
     previous_foregrounds = true_foregrounds.copy()
-    # return data
-    # return list_of_displayed_voxels
+    total_time += time.time() - f_start
     return list(set_of_displayed_voxels)
             
 
