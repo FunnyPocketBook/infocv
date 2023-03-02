@@ -163,9 +163,9 @@ def check_voxel_visibility():
     # log.info("Voxel all cam time: " + str(voxel_all_cam_end - voxel_all_cam_start))
 
     frame_counter  += 1
-    log.info(frame_counter)
     previous_foregrounds = true_foregrounds.copy()
     total_time += time.time() - f_start
+    log.info(f"{frame_counter}, Average time: " + str(total_time/frame_counter))
     return list(set_of_displayed_voxels)
             
 
