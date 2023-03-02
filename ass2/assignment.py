@@ -14,7 +14,7 @@ logging.basicConfig(format="%(asctime)s [%(levelname)s] %(module)s: %(message)s"
 log = logging.getLogger(__name__)
 
 block_size = 1
-scalling_factor = 50
+scaling_factor = 50
 
 
 def generate_grid(width, depth):
@@ -28,15 +28,19 @@ def generate_grid(width, depth):
 
 #Globals
 list_voxels = []
-list_list_points = []
-listout_of_bounds = []
+set_of_displayed_voxels = set()
+list_of_displayed_voxels = []
+list_projected_points = []
+list_out_of_bounds = []
+lookup_projected_to_voxel = [{}] * 4
+# [
+# {}, cam1
+# {}, cam2
+# {}, cam3
+# {}, cam4
+# ]
+previous_foregrounds = {}
 frame_counter = 0
-
-# timers and counters
-set_voxel_positions_total_time = 0
-background_check_total_time = 0
-voxel_check_total_time = 0
-voxel_vis_total_time = 0
 
 def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     log.info("Generating voxel space...")
@@ -58,83 +62,173 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
                     point = tuple(map(int, imgpts[0].ravel()))
                     if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
                         out_of_bounds = True
+                    else:
+                        lookup_projected_to_voxel[cam-1][point] = [x / scaling_factor, y /scaling_factor, z/scaling_factor]
                     projected_points.append(point)
                     out_of_bounds_a.append(out_of_bounds)
-                list_list_points.append(projected_points)
-                listout_of_bounds.append(out_of_bounds_a)
-                list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
+                list_projected_points.append(projected_points)
+                list_out_of_bounds.append(out_of_bounds_a)
+                list_voxels.append([x / scaling_factor, y /scaling_factor, z/scaling_factor])
     log.info("Done generating voxel space...")
     return list_voxels
 
 def check_voxel_visibility():
-    global frame_counter, background_check_total_time, voxel_check_total_time, voxel_vis_total_time
-    start_time = time.time()
+    global frame_counter, previous_foregrounds, set_of_displayed_voxels, list_of_displayed_voxels
     data = []
     true_foregrounds = {}
-    # subtract background for each camera in parallel
-    background_start = time.time()
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(subtract_background, 'cam'+str(cam)) for cam in range(1,5)]
         for future in as_completed(futures):
             true_foregrounds[future.result()[0]] = future.result()[1]
-    # for cam in range(1,5):
-    #     true_foregrounds['cam'+str(cam)] = subtract_background('cam'+str(cam))[1]
-    background_check_total_time += time.time() - background_start
-    # log.info("background check: " + str(time.time() - background_start))
-    voxel_start = time.time()
-
-    def check_voxel_visibility_helper(list_voxels, i = 0):
-        valid_voxels = []
-        for voxel in list_voxels:
+    new_white = {
+        "cam1": [],
+        "cam2": [],
+        "cam3": [],
+        "cam4": []
+    }
+    new_black = {
+        "cam1": [],
+        "cam2": [],
+        "cam3": [],
+        "cam4": []
+    }
+    # If previous_foregrounds is an empty dict, then we are on the first frame
+    if not previous_foregrounds:
+        for i, voxel in enumerate(list_voxels):
             camera_counter = 0
             for j in range(1,5):
-                if listout_of_bounds[i][j-1] == True:
+                if list_out_of_bounds[i][j-1] == True:
                     break
                 true_foreground = true_foregrounds['cam'+str(j)]
-                color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
+                color = true_foreground[list_projected_points[i][j-1][1],list_projected_points[i][j-1][0]]
                 if color == 255:
                     camera_counter += 1
                 else:
                     break
             if camera_counter == 4:
-                valid_voxels.append(voxel)
-            i += 1
-        return valid_voxels
+                list_of_displayed_voxels.append(voxel)
+                set_of_displayed_voxels.add(tuple(voxel))
+                data.append(voxel)
+        frame_counter += 1
+        previous_foregrounds = true_foregrounds.copy()
+        return data
+    
+    # Get the difference between the current foreground and the previous foreground
+    for cam in range(1,5):
+        previous_foreground = previous_foregrounds['cam'+str(cam)]
+        current_foreground = true_foregrounds['cam'+str(cam)]
+        diff = cv2.absdiff(current_foreground, previous_foreground)
+        # Create a mask that is white where the pixel values in the second frame are newly 255
+        new_black_mask = cv2.bitwise_and(previous_foreground, cv2.bitwise_not(current_foreground))
+        # Create a mask that is white where the pixel values in the second frame are newly 0
+        new_white_mask = cv2.bitwise_and(cv2.bitwise_not(previous_foreground), current_foreground)
+        new_white['cam'+str(cam)] = new_white_mask
+        new_black['cam'+str(cam)] = new_black_mask
+        # cv2.imshow('cam4 new white', new_white_mask)
+        # cv2.imshow('cam4 new black', new_black_mask)	
+        # cv2.imshow('cam4 diff', diff)
+        # cv2.imshow('cam4 current foreground', current_foreground)
+        # cv2.imshow('cam4 previous foreground', previous_foreground)
+        # cv2.waitKey(1)
 
-    # n = 5
-    # with ThreadPoolExecutor(max_workers=n) as executor:
-    #     futures = [executor.submit(check_voxel_visibility_helper, sublist_voxel, i) for i, sublist_voxel in [(i * len(list_voxels) // n, list_voxels[i * len(list_voxels) // n:(i + 1) * len(list_voxels) // n]) for i in range(n)]]
-    #     for future in as_completed(futures):
-    #         if future.result() != []:
-    #             data.extend(future.result())
+
+    # Get the value of all pixels that are white in the new white mask
+    
+    # for cam in range(1,5):
+    #     new_white_mask = new_white['cam'+str(cam)]
+    #     new_black_mask = new_black['cam'+str(cam)]
+    #     # Create a list of all the points that are white in the new white mask
+    #     new_white_points = [(x, y) for x, y in np.transpose(np.where(new_white_mask == 255))]
+    #     new_black_points = [(x, y) for x, y in np.transpose(np.where(new_black_mask == 0))]
+    #     # For each point in the new white points list, check if it is in the lookup table
+    #     for point in new_white_points:
+    #         if point in lookup_projected_to_voxel[cam-1]:
+    #             # If it is, add the voxel to the list of displayed voxels
+    #             voxel = lookup_projected_to_voxel[cam-1][point]
+    #             if voxel not in list_of_displayed_voxels:
+    #                 list_of_displayed_voxels.append(voxel)
+    #                 # data.append(voxel)
+    #     for point in new_black_points:
+    #         if point in lookup_projected_to_voxel[cam-1]:
+    #             # If it is, add the voxel to the list of displayed voxels
+    #             voxel = lookup_projected_to_voxel[cam-1][point]
+    #             if voxel in list_of_displayed_voxels:
+    #                 list_of_displayed_voxels.remove(voxel)
+
+
+
+    for cam in range(1, 5):
+        new_white_mask = new_white['cam'+str(cam)]
+        new_black_mask = new_black['cam'+str(cam)]
         
-    for i, voxel in enumerate(list_voxels):
-        camera_counter = 0
-        for j in range(1,5):
-            if listout_of_bounds[i][j-1] == True:
-                break
-            true_foreground = true_foregrounds['cam'+str(j)]
-            color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
-            if color == 255:
-                camera_counter += 1
-            else:
-                break
-        if camera_counter == 4:
-            data.append(voxel)
-    voxel_check_total_time += time.time() - voxel_start
-    # log.info("voxel check: " + str(time.time() - voxel_start))
+        # Find the indices of white and black points in the masks
+        white_indices = np.transpose(np.where(new_white_mask == 255))
+        black_indices = np.transpose(np.where(new_black_mask == 255))
+        
+        # Find the intersection of the white points and the lookup table for this camera
+        #white_voxels = tuple([tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in white_indices if tuple(p) in lookup_projected_to_voxel[cam-1]])
+        # write above line without list comprehension
+        # white_voxels = []
+        # black_voxels = []
+        white_start = time.time()
+        white_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in white_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
+        black_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in black_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
+        # for p in white_indices:
+        #     if tuple(p) in lookup_projected_to_voxel[cam-1]:
+        #         point = tuple(p)
+        #         voxel = lookup_projected_to_voxel[cam-1][point]
+        #         white_voxels.append(tuple(voxel))
+
+                
+        # for p in black_indices:
+        #     if tuple(p) in lookup_projected_to_voxel[cam-1]:
+        #         point = tuple(p)
+        #         voxel = lookup_projected_to_voxel[cam-1][point]
+        #         black_voxels.append(tuple(voxel))
+        white_end = time.time()
+        log.info(f"White voxels: {white_end - white_start}")
+        # Add the new white voxels to the displayed set
+        set_of_displayed_voxels.update(white_voxels)
+        # data.extend(white_voxels)
+        
+        # Find the intersection of the black points and the displayed voxels
+        # black_voxels = tuple([tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in black_indices if tuple(p) in lookup_projected_to_voxel[cam-1] and lookup_projected_to_voxel[cam-1][tuple(p)] in set_of_displayed_voxels])
+        
+        # Remove the black voxels from the displayed set
+        set_of_displayed_voxels.difference_update(black_voxels)
+        # data.extend(black_voxels)
+
+        
+
+
+
+
+    # for i, voxel in enumerate(list_voxels):
+    #     camera_counter = 0
+    #     for j in range(1,5):
+    #         if list_out_of_bounds[i][j-1] == True:
+    #             break
+    #         true_foreground = true_foregrounds['cam'+str(j)]
+    #         color = true_foreground[list_projected_points[i][j-1][1],list_projected_points[i][j-1][0]]
+    #         if color == 255:
+    #             camera_counter += 1
+    #         else:
+    #             break
+    #     if camera_counter == 4:
+    #         list_of_displayed_voxels.append(voxel)
+    #         data.append(voxel)
+
     frame_counter  += 1
-    voxel_vis_total_time += time.time() - start_time
-    # log.info(f"{frame_counter}, " + str(time.time() - start_time))
-    return data
+    previous_foregrounds = true_foregrounds.copy()
+    # return data
+    # return list_of_displayed_voxels
+    return list(set_of_displayed_voxels)
             
 
 def set_voxel_positions(width, height, depth):
-    global background_check_total_time, voxel_check_total_time, voxel_vis_total_time, frame_counter, set_voxel_positions_total_time
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     log.info("Generating voxel positions...")
-    start_time = time.time()
     data = []
     xL = int(-width/2)
     xR = int(width/2)
@@ -154,44 +248,7 @@ def set_voxel_positions(width, height, depth):
     data.append([xR,yR,zL])
 
     data = data + check_voxel_visibility()
-    set_voxel_positions_total_time += time.time() - start_time
     log.info("Done generating voxel positions...")
-    log.info(f"background check: {background_check_total_time/frame_counter}")
-    log.info(f"voxel check: {voxel_check_total_time/frame_counter}")
-    log.info(f"voxel vis: {voxel_vis_total_time/frame_counter}")
-    log.info(f"set voxel positions: {set_voxel_positions_total_time/frame_counter}")
-    log.info(f"frame_counter: {frame_counter}")
-
-    # threading
-    # n = 20
-    # 2023-03-01 20:46:39,997 [INFO] assignment: background check: 0.09625811151938864
-    # 2023-03-01 20:46:39,997 [INFO] assignment: voxel check: 0.15099544808416082
-    # 2023-03-01 20:46:39,998 [INFO] assignment: voxel vis: 0.24726348112125207
-    # 2023-03-01 20:46:39,998 [INFO] assignment: set voxel positions: 0.2475603405791934        
-    # 2023-03-01 20:46:39,999 [INFO] assignment: frame_counter: 101
-    #
-    # n = 5
-    # 2023-03-01 20:48:48,548 [INFO] assignment: background check: 0.09584083887610105
-    # 2023-03-01 20:48:48,549 [INFO] assignment: voxel check: 0.14461114146921894
-    # 2023-03-01 20:48:48,549 [INFO] assignment: voxel vis: 0.24045198034532
-    # 2023-03-01 20:48:48,550 [INFO] assignment: set voxel positions: 0.24068968130810425       
-    # 2023-03-01 20:48:48,550 [INFO] assignment: frame_counter: 101
-    #
-    # n = 1
-    # 2023-03-01 20:50:30,430 [INFO] assignment: background check: 0.09800923224722985
-    # 2023-03-01 20:50:30,431 [INFO] assignment: voxel check: 0.13898900475832496
-    # 2023-03-01 20:50:30,432 [INFO] assignment: voxel vis: 0.2369982370055548
-    # 2023-03-01 20:50:30,432 [INFO] assignment: set voxel positions: 0.23720121383666992       
-    # 2023-03-01 20:50:30,432 [INFO] assignment: frame_counter: 101
-    # 
-    # 
-    # no threading
-    # 
-    # 2023-03-01 20:45:32,689 [INFO] assignment: background check: 0.18298157370916687
-    # 2023-03-01 20:45:32,689 [INFO] assignment: voxel check: 0.12836335437132582
-    # 2023-03-01 20:45:32,689 [INFO] assignment: voxel vis: 0.3113449280804927
-    # 2023-03-01 20:45:32,689 [INFO] assignment: set voxel positions: 0.3115431247371258        
-    # 2023-03-01 20:45:32,690 [INFO] assignment: frame_counter: 101 
     return data
 
 def get_camera_pos(rvecs, tvecs):
@@ -200,7 +257,7 @@ def get_camera_pos(rvecs, tvecs):
     #OpenCV Y down, Z forward meanwhile OpenGL uses Y for up so swap it
     #Coordinates converted to meters
     #Swap sign for up since opencv uses -Z
-    return [cameraPosition[0]/scalling_factor,-cameraPosition[2]/scalling_factor,cameraPosition[1]/scalling_factor]
+    return [cameraPosition[0]/scaling_factor,-cameraPosition[2]/scaling_factor,cameraPosition[1]/scaling_factor]
 
 
 def get_cam_positions():
@@ -280,11 +337,6 @@ def get_background_image(path = 'ass2/data/cam1/'):
     cv2.imwrite(path + 'background.jpg',average_image)
     return average_image
 
-#Thresholds for channels
-#These values are the best OTSU method found and i adjusted a bit afterwards
-threshhold_h = 13
-threshhold_s = 13
-threshhold_v = 75
 
 #UI Names
 H_name = 'H'
@@ -302,6 +354,12 @@ window_bar_name = 'Bars'
 #Return true foreground
 def subtract_background(cameraID = 'cam1'):
     global frame_counter
+    #Thresholds for channels
+    #These values are the best OTSU method found and i adjusted a bit afterwards
+    threshhold_h = 13
+    threshhold_s = 13
+    threshhold_v = 75
+    start_time = time.time()
     path = 'ass2/data/' + cameraID + '/'
     cap = cv2.VideoCapture(path + 'video.avi')
     #fps = cap.get(cv2.CAP_PROP_FPS)
@@ -317,48 +375,85 @@ def subtract_background(cameraID = 'cam1'):
     #cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
     #cv2.createTrackbar(S_name, window_bar_name , threshhold_s, 255, on_low_S_thresh_trackbar)
     #cv2.createTrackbar(V_name, window_bar_name , threshhold_v, 255, on_low_V_thresh_trackbar)
-    if  frame_counter > frame_count:
+    if frame_counter > frame_count:
         frame_counter = 0
-    cap.set(1,frame_counter)
+    cap.set(1, frame_counter)
     ret, frame = cap.read()
     if not ret:
         log.error("Video error")
         return None
+    if frame_counter != 0:
+        cap.set(1, frame_counter-1)
+        ret, previous_frame = cap.read()
+        if not ret:
+            log.error("Video error")
+            return None
+    else:
+        previous_frame = frame
+
+    
+    
+
     #cv2.imshow('Frame ', frame)
     #cv2.waitKey(0)
     #cv2.destroyAllWindows()
-    frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
-    frame_channels = cv2.split(blurred)
+    morph_time = time.time()
+    foreground, is_previous_frame = get_mask(frame, background_image, False)
+    # frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    # blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
+    # frame_channels = cv2.split(blurred)
+
+    # # Subtract background from frame
+    # h = cv2.absdiff(background_channels[0], frame_channels[0])
+    # s = cv2.absdiff(background_channels[1], frame_channels[1])
+    # v = cv2.absdiff(background_channels[2], frame_channels[2])
+
+    # #Threshold channels
+    # ret, h = cv2.threshold(h, threshhold_h, 255, cv2.THRESH_BINARY)
+    # ret, s = cv2.threshold(s, threshhold_s, 255, cv2.THRESH_BINARY)
+    # ret, v = cv2.threshold(v, threshhold_v, 255, cv2.THRESH_BINARY)
+
+    # # Erode and dilate
+    # h = cv2.erode(h, kernelErode, iterations=3)
+    # h = cv2.dilate(h, kernelDialate, iterations=2)
+
+    # s = cv2.erode(s, kernelErode, iterations=3)
+
+    # v = cv2.erode(v, kernelErode, iterations=1)
+
+    # #Combine channels
+    # foreground = cv2.bitwise_and(h, s)
+    # foreground = cv2.bitwise_and(foreground, v)
+    # foreground = cv2.dilate(foreground, kernelDialate, iterations=2)
 
     #H channel
-    temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
-    t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
-    cv2.erode(im1,kernelErode,im1)
-    cv2.erode(im1,kernelErode,im1)
-    cv2.erode(im1,kernelErode,im1)
-    cv2.dilate(im1,kernelDialate,im1)
-    cv2.dilate(im1,kernelDialate,im1)
-    #cv2.imshow('H ', im1)
+    # temp_frame = cv2.absdiff(background_channels[0], frame_channels[0])
+    # t1, im1 = cv2.threshold(temp_frame, threshhold_h, 255,  cv2.THRESH_BINARY)
+    # cv2.erode(im1,kernelErode,im1)
+    # cv2.erode(im1,kernelErode,im1)
+    # cv2.erode(im1,kernelErode,im1)
+    # cv2.dilate(im1,kernelDialate,im1)
+    # cv2.dilate(im1,kernelDialate,im1)
+    # #cv2.imshow('H ', im1)
 
-    #S channel
-    temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
-    t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
-    cv2.erode(im2,kernelErode,im2)
-    cv2.erode(im2,kernelErode,im2)
-    cv2.erode(im2,kernelErode,im2)
-    #cv2.imshow('S ', im2)
+    # #S channel
+    # temp_frame = cv2.absdiff(background_channels[1], frame_channels[1])
+    # t2, im2 = cv2.threshold(temp_frame, threshhold_s, 255,  cv2.THRESH_BINARY)
+    # cv2.erode(im2,kernelErode,im2)
+    # cv2.erode(im2,kernelErode,im2)
+    # cv2.erode(im2,kernelErode,im2)
+    # #cv2.imshow('S ', im2)
     
-    #V channel
-    temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
-    t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
-    cv2.erode(im3,kernelErode,im3)
-    #cv2.imshow('V ', im3)
+    # #V channel
+    # temp_frame = cv2.absdiff(background_channels[2], frame_channels[2])
+    # t3, im3 = cv2.threshold(temp_frame, threshhold_v, 255,  cv2.THRESH_BINARY)
+    # cv2.erode(im3,kernelErode,im3)
+    # #cv2.imshow('V ', im3)
     
-    true_foreground = cv2.bitwise_or(im1, im2)
-    true_foreground = cv2.bitwise_or(true_foreground, im3)
-    cv2.dilate(true_foreground,kernelDialate,true_foreground)
-    cv2.dilate(true_foreground,kernelDialate,true_foreground)
+    # true_foreground = cv2.bitwise_or(im1, im2)
+    # true_foreground = cv2.bitwise_or(true_foreground, im3)
+    # cv2.dilate(true_foreground,kernelDialate,true_foreground)
+    # cv2.dilate(true_foreground,kernelDialate,true_foreground)
     
     #cv2.imshow('True foreground ', true_foreground)
     #cv2.waitKey(0)
@@ -368,7 +463,47 @@ def subtract_background(cameraID = 'cam1'):
     #cv2.erode(foreground[1],kernelErode,foreground[1] )
     #cv2.dilate(foreground[1],kernelDia,foreground[1] )
     #cv2.drawContours(foreground[1], contours, -1, (0,255,0), 3)
-    return cameraID, true_foreground
+    # log.info(f"Morph: {time.time() - morph_time}")
+    # log.info(f"Background: {time.time() - start_time}")
+    return cameraID, foreground
+def get_mask(frame, background_image, is_previous_frame):
+    background_imageHSV = cv2.cvtColor(background_image, cv2.COLOR_BGR2HSV)
+    background_channels = cv2.split(background_imageHSV)
+    kernelErode = np.ones((3, 3), np.uint8)
+    kernelDilate = np.ones((3, 3), np.uint8)
+
+    threshhold_h = 13
+    threshhold_s = 13
+    threshhold_v = 75
+    frameHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    blurred = cv2.GaussianBlur(frameHSV, (7, 7), 0)
+    frame_channels = cv2.split(blurred)
+
+    # Subtract background from frame
+    h = cv2.absdiff(background_channels[0], frame_channels[0])
+    s = cv2.absdiff(background_channels[1], frame_channels[1])
+    v = cv2.absdiff(background_channels[2], frame_channels[2])
+
+    #Threshold channels
+    _, h = cv2.threshold(h, threshhold_h, 255, cv2.THRESH_BINARY)
+    _, s = cv2.threshold(s, threshhold_s, 255, cv2.THRESH_BINARY)
+    _, v = cv2.threshold(v, threshhold_v, 255, cv2.THRESH_BINARY)
+
+    # Erode and dilate
+    h = cv2.erode(h, kernelErode, iterations=3)
+    h = cv2.dilate(h, kernelDilate, iterations=2)
+
+    s = cv2.erode(s, kernelErode, iterations=3)
+
+    v = cv2.erode(v, kernelErode, iterations=1)
+
+    #Combine channels
+    foreground = cv2.bitwise_or(h, s)
+    foreground = cv2.bitwise_or(foreground, v)
+    foreground = cv2.dilate(foreground, kernelDilate, iterations=2)
+
+    return foreground, is_previous_frame
+
 
 #Load camera properties from folder directory
 def load_camera_properties(cameraID = 'cam1'):
