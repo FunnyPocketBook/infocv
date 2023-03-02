@@ -38,7 +38,7 @@ voxel_check_total_time = 0
 voxel_vis_total_time = 0
 
 def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
-    log.info("Generating voxel space...")
+    print("Generating voxel space...")
     camera_props = {}
     for cam in range(1,5):
         camM, camd, camrvecs, camtvecs = load_camera_properties('cam'+str(cam))
@@ -62,7 +62,7 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
                 list_list_points.append(projected_points)
                 listout_of_bounds.append(out_of_bounds_a)
                 list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
-    log.info("Done generating voxel space...")
+    print("Done generating voxel space...")
     return list_voxels
 
 def check_voxel_visibility():
