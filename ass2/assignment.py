@@ -301,6 +301,7 @@ def subtract_background(cameraID = 'cam1'):
     background_channels = cv2.split(background_imageHSV)
     kernelErode = np.ones((3, 3), np.uint8)
     kernelDialate = np.ones((3, 3), np.uint8)
+
     #Initialize UI elements
     #cv2.namedWindow(window_bar_name)
     #cv2.createTrackbar(H_name, window_bar_name , threshhold_h, 255, on_low_H_thresh_trackbar)
