@@ -92,19 +92,36 @@ def check_voxel_visibility():
                 break
         if camera_counter == 4:
             data.append(list_voxels[i])
-            temp_rgb = np.float32([0.0,0.0,0.0])
-            for i in range(4):
-                temp_rgb[0] += rgb_col[i][0]
-                temp_rgb[1] += rgb_col[i][1]
-                temp_rgb[2] += rgb_col[i][2]
-            temp_rgb[0] = (temp_rgb[0] /4)/255
-            temp_rgb[1] = (temp_rgb[1] /4)/255
-            temp_rgb[2] = (temp_rgb[2] /4)/255
-            colors.append(temp_rgb)
-    frame_counter  += 1
+
     print(frame_counter)
+    labels = construct_kmeans_clusters(data)
+    for i in range(len(labels)):
+        if labels[i] == 0:
+            colors.append([0.1,0.1,0.1])
+        elif labels[i] == 1:
+            colors.append([0.1,0.5,0.1])
+        elif labels[i] == 2:
+            colors.append([0.5,0.1,0.1])
+        elif labels[i] == 3:
+            colors.append([0.1,0.1,0.5])
+    frame_counter  += 1
     return data, colors
-            
+
+def construct_kmeans_clusters(points):
+    #Remove height and convert to float
+    pointsXY = np.zeros((len(points),2), dtype=np.float32)
+    for v in range(len(points)):
+        pointsXY[v] = points[v][0],points[v][2]
+    #Cluster count
+    k = 4
+    #kmeansstuff
+    attempts = 10
+    flags = cv2.KMEANS_RANDOM_CENTERS
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    
+    compactness, labels, centers = cv2.kmeans(pointsXY,k,None,criteria,attempts,flags)
+    #TODO: assign each voxel a refference to the same center
+    return labels
 
 def set_voxel_positions(width, height, depth):
     global background_check_total_time, voxel_check_total_time, voxel_vis_total_time, frame_counter, set_voxel_positions_total_time
