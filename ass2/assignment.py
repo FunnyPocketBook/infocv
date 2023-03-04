@@ -54,9 +54,11 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
                     out_of_bounds = False
                     camM, camd, camrvecs, camtvecs = camera_props['cam'+str(cam)]
                     imgpts, jac = cv2.projectPoints(points, camrvecs, camtvecs, camM, camd)
-                    point = tuple(map(int, imgpts[0].ravel()))
-                    if point[1] > 485 or point[0] > 643 or point[0] < 0 or point[1] < 0:
+                    if imgpts[0][0][1] > 485 or imgpts[0][0][0] > 643 or imgpts[0][0][0] < 0 or imgpts[0][0][1] < 0:
                         out_of_bounds = True
+                        out_of_bounds_a.append(out_of_bounds)
+                        continue
+                    point = tuple(map(int, imgpts[0].ravel()))
                     projected_points.append(point)
                     out_of_bounds_a.append(out_of_bounds)
                 list_list_points.append(projected_points)

@@ -353,7 +353,7 @@ def find_chessboard_corners(img, camera=False, preprocess=False):
     ret, corners = cv.findChessboardCorners(gray, (ROWS, COLS), None)
     if ret == True:
         corners_found = True
-        corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
+        #corners = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), CRITERIA)
         if VERBOSE == 2:
             cv.drawChessboardCorners(img, (ROWS, COLS), corners, ret)
             cv.imshow('img', img)
@@ -508,7 +508,7 @@ def clip_video(mtx, dist, rvecs, tvecs):
         The translation vectors.
     """
     print("Opening avi video...")
-    cap = cv.VideoCapture(VIDEO_PATH + 'Extrinsics/cam3_checkerboard.avi')
+    cap = cv.VideoCapture(VIDEO_PATH + 'Extrinsics/checkerboard4.avi')
 
     while cap.isOpened():
         ret, frame = cap.read()

@@ -27,11 +27,11 @@
   <cols>1</cols>
   <dt>f</dt>
   <data>
-    -1.577237641280145 0.024617093366304653 0.013126240694102554</data></RotationValues>
+    -1.272588084813355 -0.032377003159525776 -0.009380929792803553</data></RotationValues>
 <TranslationValues type_id="opencv-matrix">
   <rows>3</rows>
   <cols>1</cols>
   <dt>f</dt>
   <data>
-    -259.7277307922695 1478.8132257826453 3581.0798157058616</data></TranslationValues>
+    -676.7797565272758 1000.5911944440395 3621.999024044687</data></TranslationValues>
 </opencv_storage>
