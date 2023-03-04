@@ -29,6 +29,8 @@ def generate_grid(width, depth):
 list_voxels = []
 list_list_points = []
 listout_of_bounds = []
+list_offline_histograms = []
+cluster_colors = []
 frame_counter = 0
 
 # timers and counters
@@ -70,40 +72,44 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
 def check_voxel_visibility():
     global frame_counter, background_check_total_time, voxel_check_total_time, voxel_vis_total_time
     data = []
+    pixels_cam2 = []
     colors = []
     true_foregrounds = {}
     frames = {}
     for cam in range(1,5):
         true_foregrounds['cam'+str(cam)], frames['cam'+str(cam)] = subtract_background('cam'+str(cam))
+        # res = cv2.bitwise_and(frames['cam'+str(cam)],frames['cam'+str(cam)],mask = true_foregrounds['cam'+str(cam)])
+        # cv2.imshow('Masked frame', res)
+        # cv2.waitKey(0)
         
     for i, voxel in enumerate(list_voxels):
         camera_counter = 0
-        rgb_col = []
+        #rgb_col = []
         for j in range(1,5):
             if listout_of_bounds[i][j-1] == True:
                 break
             true_foreground = true_foregrounds['cam'+str(j)]
             frame = frames['cam'+str(j)]
             color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
-            rgb_col.append(frame[list_list_points[i][j-1][1],list_list_points[i][j-1][0]])
+            #rgb_col.append(frame[list_list_points[i][j-1][1],list_list_points[i][j-1][0]])
             if color == 255:
                 camera_counter += 1
             else:
                 break
         if camera_counter == 4:
             data.append(list_voxels[i])
+            pixels_cam2.append(list_list_points[i][1])
 
     print(frame_counter)
     labels = construct_kmeans_clusters(data)
-    for i in range(len(labels)):
-        if labels[i] == 0:
-            colors.append([0.1,0.1,0.1])
-        elif labels[i] == 1:
-            colors.append([0.1,0.5,0.1])
-        elif labels[i] == 2:
-            colors.append([0.5,0.1,0.1])
-        elif labels[i] == 3:
-            colors.append([0.1,0.1,0.5])
+    if frame_counter == 0:
+        cluster_colors.append([[0],[0.1,0.1,0.1]])
+        cluster_colors.append([[1],[0.1,0.5,0.1]])
+        cluster_colors.append([[2],[0.5,0.1,0.1]])
+        cluster_colors.append([[3],[0.1,0.1,0.5]])
+        colors = construct_models('ass2/data/cam2/',labels, pixels_cam2, data)
+    else:
+        colors = construct_models('ass2/data/cam2/',labels, pixels_cam2, data)
     frame_counter  += 1
     return data, colors
 
@@ -122,6 +128,170 @@ def construct_kmeans_clusters(points):
     compactness, labels, centers = cv2.kmeans(pointsXY,k,None,criteria,attempts,flags)
     #TODO: assign each voxel a refference to the same center
     return labels
+
+#default cam 2 first frame since its pretty good
+def construct_models(path, labels , pixeldata, voxels ):
+    cap = cv2.VideoCapture(path + 'video.avi')
+    ret, frame = cap.read()
+    colors = []
+    data = []
+    if not ret: 
+        return colors
+    person1 = np.zeros((frame.shape[0],frame.shape[1],1), dtype=np.uint8)
+    person2 = np.zeros((frame.shape[0],frame.shape[1],1), dtype=np.uint8)
+    person3 = np.zeros((frame.shape[0],frame.shape[1],1), dtype=np.uint8)
+    person4 = np.zeros((frame.shape[0],frame.shape[1],1), dtype=np.uint8)
+    for i in range(len(labels)):
+        if labels[i] == 0 and voxels[i][1] > 9 and voxels[i][1] < 30: #Roughly above pants and bellow head (only tshirt)
+            #colors.append([0.1,0.1,0.1])
+            #Get color pixel for 2nd camera only
+            #TODO: If multiple cameras are used, adjust accoredinly
+            person1[pixeldata[i][1],pixeldata[i][0]] = 255
+        elif labels[i] == 1 and voxels[i][1] > 9 and voxels[i][1] < 30:
+            #colors.append([0.1,0.5,0.1])
+            person2[pixeldata[i][1],pixeldata[i][0]] = 255
+        elif labels[i] == 2 and voxels[i][1] > 9 and voxels[i][1] < 30:
+            #colors.append([0.5,0.1,0.1])
+            person3[pixeldata[i][1],pixeldata[i][0]] = 255
+        elif labels[i] == 3 and voxels[i][1] > 9 and voxels[i][1] < 30:
+            #colors.append([0.1,0.1,0.5])
+            person4[pixeldata[i][1],pixeldata[i][0]] = 255
+    
+    histSize = 256
+    histRange = (0, 256)
+    accumulate = False
+    hist_h = frame.shape[1]
+
+    #Person 1 histogram
+    res1 = cv2.bitwise_and(frame,frame,mask = person1)
+    bgr_planes1 = cv2.split(res1)
+    b_hist1 = cv2.calcHist(bgr_planes1, [0], person1, [histSize], histRange, accumulate=accumulate)
+    g_hist1 = cv2.calcHist(bgr_planes1, [1], person1, [histSize], histRange, accumulate=accumulate)
+    r_hist1 = cv2.calcHist(bgr_planes1, [2], person1, [histSize], histRange, accumulate=accumulate)
+    cv2.normalize(b_hist1, b_hist1, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(g_hist1, g_hist1, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(r_hist1, r_hist1, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    #Person 2 histogram
+    res2 = cv2.bitwise_and(frame,frame,mask = person2)
+    bgr_planes2 = cv2.split(res2)
+    b_hist2 = cv2.calcHist(bgr_planes2, [0], person2, [histSize], histRange, accumulate=accumulate)
+    g_hist2 = cv2.calcHist(bgr_planes2, [1], person2, [histSize], histRange, accumulate=accumulate)
+    r_hist2 = cv2.calcHist(bgr_planes2, [2], person2, [histSize], histRange, accumulate=accumulate)
+    cv2.normalize(b_hist2, b_hist2, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(g_hist2, g_hist2, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(r_hist2, r_hist2, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    #Person 3 histogram
+    res3 = cv2.bitwise_and(frame,frame,mask = person3)
+    bgr_planes3 = cv2.split(res3)
+    b_hist3 = cv2.calcHist(bgr_planes3, [0], person3, [histSize], histRange, accumulate=accumulate)
+    g_hist3 = cv2.calcHist(bgr_planes3, [1], person3, [histSize], histRange, accumulate=accumulate)
+    r_hist3 = cv2.calcHist(bgr_planes3, [2], person3, [histSize], histRange, accumulate=accumulate)
+    cv2.normalize(b_hist3, b_hist3, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(g_hist3, g_hist3, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(r_hist3, r_hist3, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    #Person 4 histogram
+    res4 = cv2.bitwise_and(frame,frame,mask = person4)
+    bgr_planes4 = cv2.split(res4)
+    b_hist4 = cv2.calcHist(bgr_planes4, [0], person4, [histSize], histRange, accumulate=accumulate)
+    g_hist4 = cv2.calcHist(bgr_planes4, [1], person4, [histSize], histRange, accumulate=accumulate)
+    r_hist4 = cv2.calcHist(bgr_planes4, [2], person4, [histSize], histRange, accumulate=accumulate)
+    cv2.normalize(b_hist4, b_hist4, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(g_hist4, g_hist4, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(r_hist4, r_hist4, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+
+    person_ids = []
+    person_ids.append([0])
+    person_ids.append([1])
+    person_ids.append([2])
+    person_ids.append([3])
+    if frame_counter == 0:
+        #first frame create offline ones
+        list_offline_histograms.append([b_hist1,g_hist1,r_hist1])
+        list_offline_histograms.append([b_hist2,g_hist2,r_hist2])
+        list_offline_histograms.append([b_hist3,g_hist3,r_hist3])
+        list_offline_histograms.append([b_hist4,g_hist4,r_hist4])
+
+        for i in range(len(labels)):
+            for j in range(len(cluster_colors)):
+                if labels[i] == cluster_colors[j][0]:
+                    data.append(cluster_colors[j][1])
+    else:
+        #compare online with offline
+        oldVal = 0
+        newVal = 0
+        newId = 0
+        #online person 1
+        for i in range(4):
+            bVal = cv2.compareHist(b_hist1,list_offline_histograms[i][0],0)
+            gVal = cv2.compareHist(g_hist1,list_offline_histograms[i][1],0)
+            rVal = cv2.compareHist(r_hist1,list_offline_histograms[i][2],0)
+            newVal = bVal+gVal+rVal
+            if newVal > oldVal:
+                oldVal = newVal
+                newId = i
+                #first hgistogram matches 3rd one offline
+        #labels[0] == colors[newId]
+        colors.append([[0],cluster_colors[newId][1]])
+         #compare online with offline
+        oldVal = 0
+        newVal = 0
+        newId = 0
+        #online person 2
+        for i in range(4):
+            bVal = cv2.compareHist(b_hist2,list_offline_histograms[i][0],0)
+            gVal = cv2.compareHist(g_hist2,list_offline_histograms[i][1],0)
+            rVal = cv2.compareHist(r_hist2,list_offline_histograms[i][2],0)
+            newVal = bVal+gVal+rVal
+            if newVal > oldVal:
+                oldVal = newVal
+                newId = i
+                #first hgistogram matches 3rd one offline
+        #labels[1] == colors[newId]
+        colors.append([[1],cluster_colors[newId][1]])
+         #compare online with offline
+        oldVal = 0
+        newVal = 0
+        newId = 0
+        #online person 3
+        for i in range(4):
+            bVal = cv2.compareHist(b_hist3,list_offline_histograms[i][0],0)
+            gVal = cv2.compareHist(g_hist3,list_offline_histograms[i][1],0)
+            rVal = cv2.compareHist(r_hist3,list_offline_histograms[i][2],0)
+            newVal = bVal+gVal+rVal
+            if newVal > oldVal:
+                oldVal = newVal
+                newId = i
+                #first hgistogram matches 3rd one offline
+        #labels[2] == colors[newId]
+        colors.append([[2],cluster_colors[newId][1]])
+         #compare online with offline
+        oldVal = 0
+        newVal = 0
+        newId = 0
+        #online person 4
+        for i in range(4):
+            bVal = cv2.compareHist(b_hist4,list_offline_histograms[i][0],0)
+            gVal = cv2.compareHist(g_hist4,list_offline_histograms[i][1],0)
+            rVal = cv2.compareHist(r_hist4,list_offline_histograms[i][2],0)
+            newVal = bVal+gVal+rVal
+            if newVal > oldVal:
+                oldVal = newVal
+                newId = i
+                #first hgistogram matches 3rd one offline
+        #labels[3] == colors[newId]
+        colors.append([[3],cluster_colors[newId][1]])
+        cv2.imshow('p1', res1)
+        cv2.imshow('p2', res2)
+        cv2.imshow('p3', res3)
+        cv2.imshow('p4', res4)
+
+
+    
+        for i in range(len(labels)):
+            for j in range(len(colors)):
+                if labels[i] == colors[j][0]:
+                    data.append(colors[j][1])
+    return data
 
 def set_voxel_positions(width, height, depth):
     global background_check_total_time, voxel_check_total_time, voxel_vis_total_time, frame_counter, set_voxel_positions_total_time
