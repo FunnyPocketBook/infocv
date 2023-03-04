@@ -350,8 +350,8 @@ def subtract_background(cameraID = 'cam1'):
     cv2.dilate(true_foreground,kernelDialate,true_foreground)
     cv2.dilate(true_foreground,kernelDialate,true_foreground)
     
-    #cv2.imshow('True foreground ', true_foreground)
-    #cv2.waitKey(0)
+    cv2.imshow('True foreground ', true_foreground)
+    cv2.waitKey(0)
     #cv2.destroyAllWindows()
     #code commet incase i need it
     #contours, hierarchy = cv2.findContours(foreground[1], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,)
