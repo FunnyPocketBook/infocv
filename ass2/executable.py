@@ -6,7 +6,7 @@ from engine.buffer.texture import *
 from engine.buffer.hdrbuffer import HDRBuffer
 from engine.buffer.blurbuffer import BlurBuffer
 from engine.effect.bloom import Bloom
-from assignment import set_voxel_positions, generate_grid, get_cam_positions, get_cam_rotation_matrices
+from assignment import set_voxel_positions, generate_grid, get_cam_positions, get_cam_rotation_matrices, construct_voxel_space,generate_mesh
 from engine.camera import Camera
 from engine.config import config
 
@@ -14,6 +14,7 @@ cube, hdrbuffer, blurbuffer, lastPosX, lastPosY = None, None, None, None, None
 firstTime = True
 window_width, window_height = config['window_width'], config['window_height']
 camera = Camera(glm.vec3(0, 100, 0), pitch=-90, yaw=0, speed=40)
+read_video = False
 
 
 def draw_objs(obj, program, perspective, light_pos, texture, normal, specular, depth):
@@ -118,12 +119,12 @@ def main():
     depth = load_texture_2d('ass2/resources/textures/depth.jpg')
     depth_grid = load_texture_2d('ass2/resources/textures/depth_grid.jpg')
 
-    grid_positions = generate_grid(config['world_width'], config['world_width'])
-    square.set_multiple_positions(grid_positions)
+    grid_positions, grid_colors = generate_grid(config['world_width'], config['world_width'])
+    square.set_multiple_positions(grid_positions, grid_colors)
 
-    cam_positions = get_cam_positions()
+    cam_positions, cam_colors = get_cam_positions()
     for c, cam_pos in enumerate(cam_positions):
-        cam_shapes[c].set_multiple_positions([cam_pos])
+        cam_shapes[c].set_multiple_positions([cam_pos],[cam_colors[c]])
 
     last_time = glfw.get_time()
     while not glfw.window_should_close(window):
@@ -135,6 +136,9 @@ def main():
         last_time = current_time
 
         move_input(window, delta_time)
+        if read_video:
+            positions, colors = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
+            cube.set_multiple_positions(positions, colors)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glClearColor(0.1, 0.2, 0.8, 1)
@@ -181,9 +185,18 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
         glfw.set_window_should_close(window, glfw.TRUE)
     if key == glfw.KEY_G and action == glfw.PRESS:
-        global cube
-        positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
-        cube.set_multiple_positions(positions)
+        global read_video
+        read_video = not read_video
+        print("Video playback is: " + str(read_video))
+        #global cube
+        #positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
+        #cube.set_multiple_positions(positions)
+    if key == glfw.KEY_V and action == glfw.PRESS:
+        step_size = 32
+        space_half_size = 1000
+        construct_voxel_space(step_size, space_half_size)
+    if key == glfw.KEY_B and action == glfw.PRESS:
+        generate_mesh()
 
 
 def mouse_move(win, pos_x, pos_y):
