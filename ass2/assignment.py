@@ -7,7 +7,6 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from engine.config import config
 
 from skimage import measure
-from skimage.draw import ellipsoid
 from scipy.ndimage.interpolation import zoom
 
 
@@ -28,8 +27,14 @@ def generate_grid(width, depth):
 
 #Globals
 list_voxels = []
-list_list_points = []
-listout_of_bounds = []
+list_projected_points = []
+list_out_of_bounds = []
+previous_foregrounds = {}
+
+# These are only used for the non-functioning version where the voxels are calculated by the difference in the foreground image
+set_of_displayed_voxels = set()
+lookup_projected_to_voxel = [{}] * 4
+
 frame_counter = 0
 captures = {
     "cam1": {
@@ -86,8 +91,8 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
                         out_of_bounds = True
                     projected_points.append(point)
                     out_of_bounds_a.append(out_of_bounds)
-                list_list_points.append(projected_points)
-                listout_of_bounds.append(out_of_bounds_a)
+                list_projected_points.append(projected_points)
+                list_out_of_bounds.append(out_of_bounds_a)
                 list_voxels.append([x / scalling_factor, y /scalling_factor, z/scalling_factor])
     print("Done generating voxel space...")
     return list_voxels
@@ -100,7 +105,7 @@ def check_voxel_visibility():
         data {list}: A list of 3D points that represent the center of each visible voxel.
         colors {list}: A list of RGB colors that represent the color of each visible voxel.
     """
-    global frame_counter
+    global frame_counter, previous_foregrounds, set_of_displayed_voxels
     data = []
     colors = []
     true_foregrounds = {}
@@ -113,35 +118,87 @@ def check_voxel_visibility():
             cam_id = future.result()[2]
             true_foregrounds[cam_id] = foreground
             frames[cam_id] = frame
+    # ------------------- Working version -------------------
+    # If previous_foregrounds is an empty dict, then we are on the first frame
+    if not previous_foregrounds:
+        for i, voxel in enumerate(list_voxels):
+            camera_counter = 0
+            rgb_col = []
+            for j in range(1,5):
+                if list_out_of_bounds[i][j-1] == True:
+                    break
+                true_foreground = true_foregrounds['cam'+str(j)]
+                frame = frames['cam'+str(j)]
+                color = true_foreground[list_projected_points[i][j-1][1],list_projected_points[i][j-1][0]]
+                rgb_col.append(frame[list_projected_points[i][j-1][1],list_projected_points[i][j-1][0]])
+                if color == 255:
+                    camera_counter += 1
+                else:
+                    break
+            if camera_counter == 4:
+                set_of_displayed_voxels.add(tuple(voxel))
+                data.append(voxel)
+                temp_rgb = np.float32([0.0,0.0,0.0])
+                for i in range(4):
+                    temp_rgb[0] += rgb_col[i][0]
+                    temp_rgb[1] += rgb_col[i][1]
+                    temp_rgb[2] += rgb_col[i][2]
+                temp_rgb[0] = (temp_rgb[0] /4)/255
+                temp_rgb[1] = (temp_rgb[1] /4)/255
+                temp_rgb[2] = (temp_rgb[2] /4)/255
+                colors.append(temp_rgb)
+        frame_counter  += 1
+        print(f"{frame_counter}")
+        # previous_foregrounds = true_foregrounds.copy() # Uncomment this line to use the non-functional speedup version
+        return data, colors
+    # ----------------- End of working version -----------------
+
+    # ----------------- Non-functional speedup version -----------------
+    new_white = {
+        "cam1": [],
+        "cam2": [],
+        "cam3": [],
+        "cam4": []
+    }
+    new_black = {
+        "cam1": [],
+        "cam2": [],
+        "cam3": [],
+        "cam4": []
+    }
+    # Get the difference between the current foreground and the previous foreground
+    for cam in range(1,5):
+        previous_foreground = previous_foregrounds['cam'+str(cam)]
+        current_foreground = true_foregrounds['cam'+str(cam)]
+        diff = cv2.absdiff(current_foreground, previous_foreground)
+        # Creates a mask that is white where the pixel values in the second frame are newly 255
+        new_black_mask = cv2.bitwise_and(previous_foreground, cv2.bitwise_not(current_foreground))
+        # Creates a mask that is white where the pixel values in the second frame are newly 0
+        new_white_mask = cv2.bitwise_and(cv2.bitwise_not(previous_foreground), current_foreground)
+        new_white['cam'+str(cam)] = new_white_mask
+        new_black['cam'+str(cam)] = new_black_mask
+
+
+    for cam in range(1, 5):
+        new_white_mask = new_white['cam'+str(cam)]
+        new_black_mask = new_black['cam'+str(cam)]
         
-    for i, voxel in enumerate(list_voxels):
-        camera_counter = 0
-        rgb_col = []
-        for j in range(1,5):
-            if listout_of_bounds[i][j-1] == True:
-                break
-            true_foreground = true_foregrounds['cam'+str(j)]
-            frame = frames['cam'+str(j)]
-            color = true_foreground[list_list_points[i][j-1][1],list_list_points[i][j-1][0]]
-            rgb_col.append(frame[list_list_points[i][j-1][1],list_list_points[i][j-1][0]])
-            if color == 255:
-                camera_counter += 1
-            else:
-                break
-        if camera_counter == 4:
-            data.append(voxel)
-            temp_rgb = np.float32([0.0,0.0,0.0])
-            for i in range(4):
-                temp_rgb[0] += rgb_col[i][0]
-                temp_rgb[1] += rgb_col[i][1]
-                temp_rgb[2] += rgb_col[i][2]
-            temp_rgb[0] = (temp_rgb[0] /4)/255
-            temp_rgb[1] = (temp_rgb[1] /4)/255
-            temp_rgb[2] = (temp_rgb[2] /4)/255
-            colors.append(temp_rgb)
+        # Find the indices of white and black points in the masks
+        white_indices = np.transpose(np.where(new_white_mask == 255))
+        black_indices = np.transpose(np.where(new_black_mask == 255))
+
+        # Find the corresponding voxels in the voxel space
+        white_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in white_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
+        black_voxels = [tuple(lookup_projected_to_voxel[cam-1][tuple(p)]) for p in black_indices if tuple(p) in lookup_projected_to_voxel[cam-1]]
+        
+        # Update the displayed voxels by adding the white voxels and removing the black voxels
+        set_of_displayed_voxels.update(white_voxels)
+        set_of_displayed_voxels.difference_update(black_voxels)
+
     frame_counter  += 1
-    print(f"{frame_counter}")
-    return data, colors
+    previous_foregrounds = true_foregrounds.copy()
+    return list(set_of_displayed_voxels)
+# ----------------- End of non-functional speedup version -----------------
             
 
 def set_voxel_positions(width, height, depth):
