@@ -2,6 +2,7 @@ import cv2
 import glm
 import numpy as np
 import copy
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -107,16 +108,16 @@ def check_voxel_visibility():
         cluster_colors.append([[1],[0.1,0.5,0.1]])
         cluster_colors.append([[2],[0.5,0.1,0.1]])
         cluster_colors.append([[3],[0.1,0.1,0.5]])
-    labels = construct_kmeans_clusters(data)
-    colors = construct_models(labels, pixels_cam, data)
-    frame_counter  += 1
+    labels, centers = construct_kmeans_clusters(data)
+    colors = construct_models(labels, pixels_cam, data, centers)
+    frame_counter  += 15
     return data, colors
 
 def construct_kmeans_clusters(points):
     #Remove height and convert to float
-    pointsXY = np.zeros((len(points),2), dtype=np.float32)
+    pointsXZ = np.zeros((len(points),2), dtype=np.float32)
     for v in range(len(points)):
-        pointsXY[v] = points[v][0],points[v][2]
+        pointsXZ[v] = points[v][0],points[v][2]
     #Cluster count
     k = 4
     #kmeansstuff
@@ -124,19 +125,25 @@ def construct_kmeans_clusters(points):
     flags = cv2.KMEANS_RANDOM_CENTERS
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     
-    compactness, labels, centers = cv2.kmeans(pointsXY,k,None,criteria,attempts,flags)
+    compactness, labels, centers = cv2.kmeans(pointsXZ,k,None,criteria,attempts,flags)
     #TODO: assign each voxel a refference to the same center
-    return labels
+    return labels, centers
+
+
+def angle_between(p1, p2):
+    ang1 = np.arctan2(*p1[::-1])
+    ang2 = np.arctan2(*p2[::-1])
+    return np.rad2deg((ang1 - ang2) % (2 * np.pi))
 
 #default cam 2 first frame since its pretty good
-def construct_models(labels , pixeldata, voxels ):
+def construct_models(labels , pixeldata, voxels, centers):
     path = 'ass2/data/'
     capCam1 = cv2.VideoCapture(path + 'cam1/video.avi')
     capCam2 = cv2.VideoCapture(path + 'cam2/video.avi')
     capCam3 = cv2.VideoCapture(path + 'cam3/video.avi')
     capCam4 = cv2.VideoCapture(path + 'cam4/video.avi')
     #Read specific frames 
-    #For cam1,2,4 first frame is good enough
+    #For cam1,2,4 first frame is good enough but we spread them out so we have a nice spread of positions of people
     capCam1.set(1,580)
     ret1, frameCam1 = capCam1.read()
     capCam2.set(1,0)
@@ -146,13 +153,59 @@ def construct_models(labels , pixeldata, voxels ):
     ret3, frameCam3 = capCam3.read()
     capCam4.set(1,900)
     ret4, frameCam4 = capCam4.read()
+
     #Color array used for the comparison step
     colors = []
+
+    #Check which camera has clear visibility
+    cam_good_view = []
+    anglesPView = []
+    distancesPView = []
+    skip = False
+    cam_positions, cam_colors = get_cam_positions()
+    for i in range(4):
+        angles = []
+        distances = []
+        for j in range(4):
+            cam2Dx = cam_positions[i][0]
+            cam2Dz = cam_positions[i][2]
+            cam2D = [cam2Dx,cam2Dz]
+            cluster2D = centers[j]
+            angle = angle_between(cam2D, cluster2D)
+            dist = math.dist(cam2D,cluster2D)
+            angles.append(angle)
+            distances.append(dist)
+        anglesPView.append(angles)
+        distancesPView.append(distances)
+
+    
+    for k in range(4):
+        view_good = []
+        for i in range(4):
+            is_visible = True
+            for j in range(i+1,4):
+                diff = np.absolute(anglesPView[k][i] - anglesPView[k][j])
+                if diff < 2:
+                    if distancesPView[k][i] > distancesPView[k][j]:
+                        is_visible = False
+            view_good.append(is_visible)
+        cam_good_view.append(view_good)
+
+    if len(cam_good_view) == 1:
+        print('yes')
+    #Transform frames from BGR to HSV
+    frameCam1 = cv2.cvtColor(frameCam1, cv2.COLOR_BGR2HSV)
+    frameCam2 = cv2.cvtColor(frameCam2, cv2.COLOR_BGR2HSV)
+    frameCam3 = cv2.cvtColor(frameCam3, cv2.COLOR_BGR2HSV)
+    frameCam4 = cv2.cvtColor(frameCam4, cv2.COLOR_BGR2HSV)
+    
+    #Array holder for all views
     frame_views = []
     frame_views.append(frameCam1)
     frame_views.append(frameCam2)
     frame_views.append(frameCam3)
     frame_views.append(frameCam4)
+
     #Final return array of colors
     data = []
 
@@ -160,14 +213,13 @@ def construct_models(labels , pixeldata, voxels ):
         print('Video Error')
         return colors
     
-    #globals
+    #Globals
     global list_offline_histograms
     global frame_counter
     global cluster_colors
 
     #Views
     view_array = []
-
     #Masks
     for j in range(4):
         person1 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
@@ -175,18 +227,18 @@ def construct_models(labels , pixeldata, voxels ):
         person3 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         person4 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         for i in range(len(labels)):
-            if labels[i] == 0: #Roughly above pants and bellow head (only tshirt)
+            if labels[i] == 0 and voxels[i][1] > 7 and voxels[i][1] < 30: #Roughly above pants and bellow head (only tshirt)
                 person1[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 1:
+            elif labels[i] == 1 and voxels[i][1] > 7 and voxels[i][1] < 30:
                 person2[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 2:
+            elif labels[i] == 2 and voxels[i][1] > 7 and voxels[i][1] < 30:
                 person3[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 3:
+            elif labels[i] == 3 and voxels[i][1] > 7 and voxels[i][1] < 30:
                 person4[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
         view_array.append([person1,person2,person3,person4])
         
     #histogram parameters
-    histSize = 8
+    histSize = 16
     histRange = (1, 256)
     accumulate = False
     hist_h = frameCam2.shape[1]
@@ -199,14 +251,14 @@ def construct_models(labels , pixeldata, voxels ):
         for i in range(4):
             res = cv2.bitwise_and(frame_views[j],frame_views[j],mask = view_array[j][i])
             bgr_planes = cv2.split(res)
-            b_hist = cv2.calcHist(bgr_planes, [0], view_array[j][i], [histSize], histRange, accumulate=accumulate)
-            g_hist = cv2.calcHist(bgr_planes, [1], view_array[j][i], [histSize], histRange, accumulate=accumulate)
-            r_hist = cv2.calcHist(bgr_planes, [2], view_array[j][i], [histSize], histRange, accumulate=accumulate)
-            cv2.normalize(b_hist, b_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
-            cv2.normalize(g_hist, g_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
-            cv2.normalize(r_hist, r_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+            h_hist = cv2.calcHist(bgr_planes, [0], view_array[j][i], [histSize], histRange, accumulate=accumulate)
+            s_hist = cv2.calcHist(bgr_planes, [1], view_array[j][i], [histSize], histRange, accumulate=accumulate)
+            v_hist = cv2.calcHist(bgr_planes, [2], view_array[j][i], [histSize], histRange, accumulate=accumulate)
+            cv2.normalize(h_hist, h_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+            cv2.normalize(s_hist, s_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
+            cv2.normalize(v_hist, v_hist, alpha=0, beta=hist_h, norm_type=cv2.NORM_MINMAX)
 
-            list_histograms.append([b_hist,g_hist,r_hist])
+            list_histograms.append([h_hist,s_hist,v_hist])
         list_view_histograms.append(list_histograms)
     
     #if this is the first frame, push the histograms to storage (Offline histograms) and skip comparison
@@ -221,22 +273,11 @@ def construct_models(labels , pixeldata, voxels ):
 
     #Compare online with offline histograms
     #Select the one that matches the best
-    #Per offline-histogram, compare with the 4 online-histograms and assign whichever matches best
-    #This runs only on cam2
-    # for i in range(len(list_view_histograms)):
-    #     oldVal = 0
-    #     newVal = 0
-    #     newId = 0
-    #     for j in range(len(list_offline_histograms)):
-    #         bVal = cv2.compareHist(list_view_histograms[1][i][0],list_offline_histograms[1][j][0],0)
-    #         gVal = cv2.compareHist(list_view_histograms[1][i][1],list_offline_histograms[1][j][1],0)
-    #         rVal = cv2.compareHist(list_view_histograms[1][i][2],list_offline_histograms[1][j][2],0)
-    #         newVal = bVal+gVal+rVal
-    #         if newVal > oldVal:
-    #             oldVal = newVal
-    #             newId = j
-    #     #After a match is found, assign the online cluster label to the correct offline color cluster label
-    #     colors.append([[i],cluster_colors[newId][1]])
+    #PER: view
+    #     PER: offline-histogram
+    #             DO: compare PER: view
+    #                                             PER: online-histograms 
+    #                                                        DO: assign best match
     view_match_array = []
     for k in range(4):
         match_array = []
@@ -244,37 +285,45 @@ def construct_models(labels , pixeldata, voxels ):
             oldVal = 0
             newVal = 0
             newId = 0
+            hVal = 0
+            sVal = 0
+            vVal = 0
             for j in range(len(list_offline_histograms)):
-                bVal = cv2.compareHist(list_view_histograms[1][i][0],list_offline_histograms[1][j][0],0)
-                gVal = cv2.compareHist(list_view_histograms[1][i][1],list_offline_histograms[1][j][1],0)
-                rVal = cv2.compareHist(list_view_histograms[1][i][2],list_offline_histograms[1][j][2],0)
-                newVal = bVal+gVal+rVal
+                if cam_good_view[k][i] == True:
+                    hVal = cv2.compareHist(list_view_histograms[1][i][0],list_offline_histograms[1][j][0],0)
+                    sVal = cv2.compareHist(list_view_histograms[1][i][1],list_offline_histograms[1][j][1],0)
+                    vVal = cv2.compareHist(list_view_histograms[1][i][2],list_offline_histograms[1][j][2],0)
+                newVal = hVal+sVal+vVal
                 match_array.append([i,newVal,j])
-            #After a match is found, assign the online cluster label to the correct offline color cluster label
         view_match_array.append([k,match_array])       
+    
     match_index = 0
+    used_indexes = []
     for j in range(4):
         firstId = 0
         secondId = 0
         thirdId = 0
         fourthId = 0
-        
+        comparisonsPView = []
         for view in range(4):
-                firstId += view_match_array[view][1][match_index][1]
-                secondId += view_match_array[view][1][match_index+1][1]
-                thirdId += view_match_array[view][1][match_index+2][1]
-                fourthId += view_match_array[view][1][match_index+3][1]
+                firstId = view_match_array[view][1][match_index][1]
+                secondId = view_match_array[view][1][match_index+1][1]
+                thirdId = view_match_array[view][1][match_index+2][1]
+                fourthId = view_match_array[view][1][match_index+3][1]
+                comparisonsPView.append([firstId,secondId,thirdId,fourthId])
 
         Indexid = 0
         oldVal = 0
-        list_vals = [firstId,secondId,thirdId,fourthId]
-        for i in range(4):
-            if list_vals[i] > oldVal:
-                oldVal = list_vals[i]
-                Indexid = i
+        for k in range(4):
+            for i in range(4):
+                if comparisonsPView[k][i] > oldVal:
+                    if i not in used_indexes:
+                        oldVal = comparisonsPView[k][i]
+                        Indexid = i
         match_index += 4
+        used_indexes.append(Indexid)
         colors.append([[j],cluster_colors[Indexid][1]])
-        #view_match_array[0-4] views
+    #view_match_array[0-4] views
     #view_match_array[0-4][0] = k
     #view_match_array[0-4][1] = match_array
     #view_match_array[0-4][1][0-15] = all comparisons 
