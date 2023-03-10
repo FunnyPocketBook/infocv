@@ -157,7 +157,7 @@ def construct_models(labels , pixeldata, voxels, centers):
     #Color array used for the comparison step
     colors = []
 
-    #Check which camera has clear visibility
+    #Calculate clusters distance and angle to camera
     cam_good_view = []
     anglesPView = []
     distancesPView = []
@@ -178,7 +178,9 @@ def construct_models(labels , pixeldata, voxels, centers):
         anglesPView.append(angles)
         distancesPView.append(distances)
 
-    
+    #Check if cluster is occluded
+    #if two clusters share a similar angle to the camera
+    #   THEN: if one cluster is closer to the camera than the other.
     for k in range(4):
         view_good = []
         for i in range(4):
@@ -193,6 +195,7 @@ def construct_models(labels , pixeldata, voxels, centers):
 
     if len(cam_good_view) == 1:
         print('yes')
+
     #Transform frames from BGR to HSV
     frameCam1 = cv2.cvtColor(frameCam1, cv2.COLOR_BGR2HSV)
     frameCam2 = cv2.cvtColor(frameCam2, cv2.COLOR_BGR2HSV)
@@ -220,20 +223,25 @@ def construct_models(labels , pixeldata, voxels, centers):
 
     #Views
     view_array = []
+
     #Masks
     for j in range(4):
+        #we just need the shape, it doesn't matter which frame we use
         person1 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         person2 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         person3 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         person4 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         for i in range(len(labels)):
-            if labels[i] == 0 and voxels[i][1] > 7 and voxels[i][1] < 30: #Roughly above pants and bellow head (only tshirt)
+            if voxels[i][1] > 9 and voxels[i][1] < 30: #Roughly above pants and bellow head (only tshirt)
+                continue
+
+            if labels[i] == 0: 
                 person1[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 1 and voxels[i][1] > 7 and voxels[i][1] < 30:
+            elif labels[i] == 1:
                 person2[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 2 and voxels[i][1] > 7 and voxels[i][1] < 30:
+            elif labels[i] == 2:
                 person3[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-            elif labels[i] == 3 and voxels[i][1] > 7 and voxels[i][1] < 30:
+            elif labels[i] == 3:
                 person4[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
         view_array.append([person1,person2,person3,person4])
         
@@ -271,32 +279,41 @@ def construct_models(labels , pixeldata, voxels, centers):
         #Early return
         return data
 
-    #Compare online with offline histograms
-    #Select the one that matches the best
+    #Calculate online to offline comparison values
     #PER: view
-    #     PER: offline-histogram
-    #             DO: compare PER: view
-    #                                             PER: online-histograms 
-    #                                                        DO: assign best match
+    #     PER: online-histogram
+    #                        PER: offline-histograms 
+    #                                 DO: assign [ id of online cluster, value for each comparison, id of offline cluster]
+    #     DO: assign per each view all data of previous array
     view_match_array = []
     for k in range(4):
         match_array = []
         for i in range(len(list_view_histograms)):
             oldVal = 0
             newVal = 0
-            newId = 0
             hVal = 0
             sVal = 0
             vVal = 0
             for j in range(len(list_offline_histograms)):
+                #If the color model is occluded don't calculate it and return only a 0.
                 if cam_good_view[k][i] == True:
+                #----------------------------------------------
                     hVal = cv2.compareHist(list_view_histograms[1][i][0],list_offline_histograms[1][j][0],0)
                     sVal = cv2.compareHist(list_view_histograms[1][i][1],list_offline_histograms[1][j][1],0)
                     vVal = cv2.compareHist(list_view_histograms[1][i][2],list_offline_histograms[1][j][2],0)
+                #-----------------------------------------------
                 newVal = hVal+sVal+vVal
                 match_array.append([i,newVal,j])
         view_match_array.append([k,match_array])       
     
+    #Find best match from the data in the previous loop
+    #PER: online cluster index [ j ]
+    #       PER: view
+    #               DO: get all possible comparisons for the j cluster and assign them to array
+    #       PER: view
+    #               PER: comparison
+    #                       DO: if its higher than previous comparion, then the index matches better -> assign new comparison value and the index that it matched on. Do this for all comparisons.
+    #       DO: Assign from offline colors the correct online color and append that we have used this label so we don't label 2 cluster with the same color.
     match_index = 0
     used_indexes = []
     for j in range(4):
@@ -323,6 +340,7 @@ def construct_models(labels , pixeldata, voxels, centers):
         match_index += 4
         used_indexes.append(Indexid)
         colors.append([[j],cluster_colors[Indexid][1]])
+    #How the view_match_array looks like
     #view_match_array[0-4] views
     #view_match_array[0-4][0] = k
     #view_match_array[0-4][1] = match_array
@@ -330,8 +348,6 @@ def construct_models(labels , pixeldata, voxels, centers):
     #view_match_array[0-4][1][0-15][0] = id of guy
     #view_match_array[0-4][1][0-15][1] = value of comapirons
     #view_match_array[0-4][1][0-15][2] = to which cluster it was compared to
-            
-    #colors.append([[i],cluster_colors[newId][1]])
 
     for i in range(len(labels)):
         for j in range(len(colors)):
