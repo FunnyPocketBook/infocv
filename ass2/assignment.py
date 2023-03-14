@@ -23,7 +23,8 @@ def generate_grid(width, depth):
     for x in range(width):
         for z in range(depth):
             data.append([x*block_size - width/2, -block_size, z*block_size - depth/2])
-            colors.append([1.0, 1.0, 1.0] if (x+z) % 2 == 0 else [0, 0, 0])
+            #colors.append([1.0, 1.0, 1.0] if (x+z) % 2 == 0 else [0, 0, 0])
+            colors.append([1.0, 1.0, 1.0])
     return data, colors
 
 #Globals
@@ -108,12 +109,10 @@ def check_voxel_visibility():
         cluster_colors.append([[2],[0.5,0.1,0.1]])
         cluster_colors.append([[3],[0.1,0.1,0.5]])
     labels, centers = construct_kmeans_clusters(data)
-    colors = construct_models(labels, pixels_cam, data, centers, frames)
+    colors, center_colors = construct_models(labels, pixels_cam, data, centers, frames)
     for i, center in enumerate(centers):
         path_history.append([center[0],0,center[1]])
-        # find first occurence where the value of voxel_to_cluster is equal to i
-        index = next((index for (index, d) in enumerate(voxel_to_cluster) if d == i), None)
-        path_history_colors.append(colors[index])
+        path_history_colors.append(center_colors[i][1])
     data.extend(path_history)
     colors.extend(path_history_colors)
     frame_counter  += 15
@@ -296,7 +295,7 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
                     data.append(cluster_colors[j][1])
                     voxel_to_cluster.append(labels[i])
         #Early return
-        return data
+        return data, cluster_colors
 
     #Calculate online to offline comparison values
     #PER: view
@@ -373,7 +372,7 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
             if labels[i] == colors[j][0]:
                 data.append(colors[j][1])
                 voxel_to_cluster.append(labels[i])
-    return data
+    return data, colors
 
 def set_voxel_positions(width, height, depth):
     global frame_counter
