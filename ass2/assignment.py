@@ -32,13 +32,12 @@ list_list_points = []
 listout_of_bounds = []
 list_offline_histograms = []
 cluster_colors = []
+voxel_to_cluster = []
 frame_counter = 0
 
-# timers and counters
-set_voxel_positions_total_time = 0
-background_check_total_time = 0
-voxel_check_total_time = 0
-voxel_vis_total_time = 0
+# tracking
+path_history = []
+path_history_colors = []
 
 def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     print("Generating voxel space...")
@@ -71,7 +70,7 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
     return list_voxels
 
 def check_voxel_visibility():
-    global frame_counter, background_check_total_time, voxel_check_total_time, voxel_vis_total_time
+    global frame_counter, path_history, path_history_colors
     data = []
     pixels_cam = []
     colors = []
@@ -104,12 +103,19 @@ def check_voxel_visibility():
     print(frame_counter)
     
     if frame_counter == 0:
-        cluster_colors.append([[0],[0.1,0.1,0.1]])
+        cluster_colors.append([[0],[0,1,1]])
         cluster_colors.append([[1],[0.1,0.5,0.1]])
         cluster_colors.append([[2],[0.5,0.1,0.1]])
         cluster_colors.append([[3],[0.1,0.1,0.5]])
     labels, centers = construct_kmeans_clusters(data)
     colors = construct_models(labels, pixels_cam, data, centers, frames)
+    for i, center in enumerate(centers):
+        path_history.append([center[0],0,center[1]])
+        # find first occurence where the value of voxel_to_cluster is equal to i
+        index = next((index for (index, d) in enumerate(voxel_to_cluster) if d == i), None)
+        path_history_colors.append(colors[index])
+    data.extend(path_history)
+    colors.extend(path_history_colors)
     frame_counter  += 15
     return data, colors
 
@@ -140,6 +146,7 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
     global list_offline_histograms
     global frame_counter
     global cluster_colors
+    global voxel_to_cluster
 
     #Read specific frames 
     #For cam1,2,4 first frame is good enough but we spread them out so we have a nice spread of positions of people
@@ -287,6 +294,7 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
             for j in range(len(cluster_colors)):
                 if labels[i] == cluster_colors[j][0]:
                     data.append(cluster_colors[j][1])
+                    voxel_to_cluster.append(labels[i])
         #Early return
         return data
 
@@ -364,10 +372,11 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
         for j in range(len(colors)):
             if labels[i] == colors[j][0]:
                 data.append(colors[j][1])
+                voxel_to_cluster.append(labels[i])
     return data
 
 def set_voxel_positions(width, height, depth):
-    global background_check_total_time, voxel_check_total_time, voxel_vis_total_time, frame_counter, set_voxel_positions_total_time
+    global frame_counter
     # Generates random voxel locations
     # TODO: You need to calculate proper voxel arrays instead of random ones.
     data = []
