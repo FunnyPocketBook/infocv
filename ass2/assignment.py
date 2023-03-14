@@ -109,7 +109,7 @@ def check_voxel_visibility():
         cluster_colors.append([[2],[0.5,0.1,0.1]])
         cluster_colors.append([[3],[0.1,0.1,0.5]])
     labels, centers = construct_kmeans_clusters(data)
-    colors = construct_models(labels, pixels_cam, data, centers)
+    colors = construct_models(labels, pixels_cam, data, centers, frames)
     frame_counter  += 15
     return data, colors
 
@@ -131,28 +131,41 @@ def construct_kmeans_clusters(points):
 
 
 def angle_between(p1, p2):
-    ang1 = np.arctan2(*p1[::-1])
-    ang2 = np.arctan2(*p2[::-1])
-    return np.rad2deg((ang1 - ang2) % (2 * np.pi))
+    return math.degrees(math.atan2(p1[1]-p2[1], p1[0]-p2[0]))
 
 #default cam 2 first frame since its pretty good
-def construct_models(labels , pixeldata, voxels, centers):
-    path = 'ass2/data/'
-    capCam1 = cv2.VideoCapture(path + 'cam1/video.avi')
-    capCam2 = cv2.VideoCapture(path + 'cam2/video.avi')
-    capCam3 = cv2.VideoCapture(path + 'cam3/video.avi')
-    capCam4 = cv2.VideoCapture(path + 'cam4/video.avi')
+def construct_models(labels , pixeldata, voxels, centers, online_frames):
+
+    #Globals
+    global list_offline_histograms
+    global frame_counter
+    global cluster_colors
+
     #Read specific frames 
     #For cam1,2,4 first frame is good enough but we spread them out so we have a nice spread of positions of people
-    capCam1.set(1,580)
-    ret1, frameCam1 = capCam1.read()
-    capCam2.set(1,0)
-    ret2, frameCam2 = capCam2.read()
-    #Frame 1200 seems the best for cam3 only
-    capCam3.set(1,1200)
-    ret3, frameCam3 = capCam3.read()
-    capCam4.set(1,900)
-    ret4, frameCam4 = capCam4.read()
+    frameCam1 =  online_frames['cam'+str(1)]
+    frameCam2 =  online_frames['cam'+str(2)]
+    frameCam3 =  online_frames['cam'+str(3)]
+    frameCam4 =  online_frames['cam'+str(4)]
+
+    #Set offline clusters
+    if frame_counter == 0:
+        path = 'ass2/data/'
+
+        capCam1 = cv2.VideoCapture(path + 'cam1/video.avi')
+        capCam2 = cv2.VideoCapture(path + 'cam2/video.avi')
+        capCam3 = cv2.VideoCapture(path + 'cam3/video.avi')
+        capCam4 = cv2.VideoCapture(path + 'cam4/video.avi')
+
+        capCam1.set(1,580)
+        ret1, frameCam1 = capCam1.read()
+        capCam2.set(1,0)
+        ret2, frameCam2 = capCam2.read()
+        #Frame 1200 seems the best for cam3 only
+        capCam3.set(1,1200)
+        ret3, frameCam3 = capCam3.read()
+        capCam4.set(1,900)
+        ret4, frameCam4 = capCam4.read()
 
     #Color array used for the comparison step
     colors = []
@@ -186,8 +199,10 @@ def construct_models(labels , pixeldata, voxels, centers):
         for i in range(4):
             is_visible = True
             for j in range(i+1,4):
-                diff = np.absolute(anglesPView[k][i] - anglesPView[k][j])
-                if diff < 2:
+                maximum = max(anglesPView[k][i], anglesPView[k][j])
+                minimum = min(anglesPView[k][i], anglesPView[k][j])
+                diff = maximum - minimum
+                if diff < 5:
                     if distancesPView[k][i] > distancesPView[k][j]:
                         is_visible = False
             view_good.append(is_visible)
@@ -212,15 +227,6 @@ def construct_models(labels , pixeldata, voxels, centers):
     #Final return array of colors
     data = []
 
-    if not ret1 or not ret2 or not ret3 or not ret4: 
-        print('Video Error')
-        return colors
-    
-    #Globals
-    global list_offline_histograms
-    global frame_counter
-    global cluster_colors
-
     #Views
     view_array = []
 
@@ -232,7 +238,7 @@ def construct_models(labels , pixeldata, voxels, centers):
         person3 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         person4 = np.zeros((frameCam2.shape[0],frameCam2.shape[1],1), dtype=np.uint8)
         for i in range(len(labels)):
-            if voxels[i][1] > 9 and voxels[i][1] < 30: #Roughly above pants and bellow head (only tshirt)
+            if voxels[i][1] < 7 or voxels[i][1] > 30: #Roughly above pants and bellow head (only tshirt)
                 continue
 
             if labels[i] == 0: 
@@ -243,6 +249,11 @@ def construct_models(labels , pixeldata, voxels, centers):
                 person3[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
             elif labels[i] == 3:
                 person4[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
+        # cv2.imshow('p1', person1)
+        # cv2.imshow('p2', person2)
+        # cv2.imshow('p3', person3)
+        # cv2.imshow('p4', person4)
+        # cv2.waitKey(0)
         view_array.append([person1,person2,person3,person4])
         
     #histogram parameters
