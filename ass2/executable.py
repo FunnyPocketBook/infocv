@@ -192,8 +192,8 @@ def key_callback(window, key, scancode, action, mods):
         #positions = set_voxel_positions(config['world_width'], config['world_height'], config['world_width'])
         #cube.set_multiple_positions(positions)
     if key == glfw.KEY_V and action == glfw.PRESS:
-        step_size = 32
-        space_half_size = 1000
+        step_size = 128
+        space_half_size = 2500
         construct_voxel_space(step_size, space_half_size)
     if key == glfw.KEY_B and action == glfw.PRESS:
         generate_mesh()

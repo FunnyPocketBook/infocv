@@ -4,7 +4,7 @@ chessboard:
   cell_length: 115 # Length of a chessboard cell in the real world
 webcam: True # Set True to use webcam, False to use images
 calibration:
-  calibration_file: "camera_config_3.npz"
+  calibration_file: "camera_config_4.npz"
   image_path: "ass1/images/10/"
   video_path: "ass1/video/"
   training_images_amnt: 0 # Set to 0 to use all images that are found in IMAGE_PATH, set to a number to use that many images
