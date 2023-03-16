@@ -48,8 +48,8 @@ def construct_voxel_space(step = 32, voxel_space_half_size = 1000):
         camera_props['cam'+str(cam)] = [camM, camd, camrvecs, camtvecs]
 
     for x in range(-voxel_space_half_size,voxel_space_half_size,step):
-        for y in range(0,voxel_space_half_size * 2,step):
-            for z in range(-voxel_space_half_size,voxel_space_half_size,step):
+        for y in range(0,2300,step):
+            for z in range(-voxel_space_half_size - 1000,voxel_space_half_size + 1000,step):
                 points = np.float32([[x,z,-y]])
                 projected_points = []
                 out_of_bounds_a = []
@@ -115,7 +115,7 @@ def check_voxel_visibility():
         path_history_colors.append(center_colors[i][1])
     data.extend(path_history)
     colors.extend(path_history_colors)
-    frame_counter  += 15
+    frame_counter  += 5
     return data, colors
 
 def construct_kmeans_clusters(points):
