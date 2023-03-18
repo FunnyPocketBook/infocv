@@ -110,6 +110,7 @@ def check_voxel_visibility():
         cluster_colors.append([[3],[0.1,0.1,0.5]])
     labels, centers = construct_kmeans_clusters(data)
     colors, center_colors = construct_models(labels, pixels_cam, data, centers, frames)
+    # sets the path
     for i, center in enumerate(centers):
         path_history.append([center[0],0,center[1]])
         path_history_colors.append(center_colors[i][1])
@@ -119,6 +120,15 @@ def check_voxel_visibility():
     return data, colors
 
 def construct_kmeans_clusters(points):
+    """Constructs kmeans clusters from the points
+    
+    Arguments:
+        points {list} -- list of points
+        
+    Returns:
+        labels -- labels of the points
+        centers -- centers of the clusters
+    """
     #Remove height and convert to float
     pointsXZ = np.zeros((len(points),2), dtype=np.float32)
     for v in range(len(points)):
@@ -134,6 +144,16 @@ def construct_kmeans_clusters(points):
     return labels, centers
 
 def find_angle(p1, p2, p3):
+    """Finds the angle between three points
+    
+    Arguments:
+        p1 {tuple} -- point 1
+        p2 {tuple} -- point 2
+        p3 {tuple} -- point 3
+        
+    Returns:
+        angle_degrees -- angle in degrees
+    """
     #Calculate the vectors between the center point and the other two points
     v1 = (p1[0]-p3[0], p1[1]-p3[1])
     v2 = (p2[0]-p3[0], p2[1]-p3[1])
@@ -382,7 +402,6 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
 def set_voxel_positions(width, height, depth):
     global frame_counter
     # Generates random voxel locations
-    # TODO: You need to calculate proper voxel arrays instead of random ones.
     data = []
     colors = []
     xL = int(-width/2)
@@ -421,8 +440,6 @@ def get_camera_pos(rvecs, tvecs):
 
 def get_cam_positions():
     # Generates dummy camera locations at the 4 corners of the room
-    # TODO: You need to input the estimated locations of the 4 cameras in the world coordinates.
-
     #Cam1
     cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
     cam1pos = get_camera_pos(cam1rvecs, cam1tvecs)
@@ -451,7 +468,6 @@ def get_extrensic_matrix(rvecs, tvecs):
 
 def get_cam_rotation_matrices():
     # Generates dummy camera rotation matrices, looking down 45 degrees towards the center of the room
-    # TODO: You need to input the estimated camera rotation matrices (4x4) of the 4 cameras in the world coordinates.
     #Cam1
     cam1M, cam1d, cam1rvecs, cam1tvecs = load_camera_properties('cam1')
     cam1M44 = get_extrensic_matrix(cam1rvecs, cam1tvecs)
