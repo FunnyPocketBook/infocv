@@ -125,20 +125,33 @@ def construct_kmeans_clusters(points):
         pointsXZ[v] = points[v][0],points[v][2]
     #Cluster count
     k = 4
-    #kmeansstuff
+    #kmeans stuff
     attempts = 10
     flags = cv2.KMEANS_RANDOM_CENTERS
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     
     compactness, labels, centers = cv2.kmeans(pointsXZ,k,None,criteria,attempts,flags)
-    #TODO: assign each voxel a refference to the same center
     return labels, centers
 
+def find_angle(p1, p2, p3):
+    #Calculate the vectors between the center point and the other two points
+    v1 = (p1[0]-p3[0], p1[1]-p3[1])
+    v2 = (p2[0]-p3[0], p2[1]-p3[1])
 
-def angle_between(p1, p2):
-    return math.degrees(math.atan2(p1[1]-p2[1], p1[0]-p2[0]))
+    #Calculate the dot product between the two vectors
+    dot_product = v1[0]*v2[0] + v1[1]*v2[1]
 
-#default cam 2 first frame since its pretty good
+    #Calculate the lengths of the two vectors
+    v1_length = math.sqrt(v1[0]**2 + v1[1]**2)
+    v2_length = math.sqrt(v2[0]**2 + v2[1]**2)
+
+    #Calculate the angle between the two vectors
+    angle_radians = math.acos(dot_product / (v1_length * v2_length))
+
+    #Convert the angle to degrees
+    angle_degrees = math.degrees(angle_radians)
+    return angle_degrees
+
 def construct_models(labels , pixeldata, voxels, centers, online_frames):
 
     #Globals
@@ -147,67 +160,64 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
     global cluster_colors
     global voxel_to_cluster
 
-    #Read specific frames 
-    #For cam1,2,4 first frame is good enough but we spread them out so we have a nice spread of positions of people
+
     frameCam1 =  online_frames['cam'+str(1)]
     frameCam2 =  online_frames['cam'+str(2)]
     frameCam3 =  online_frames['cam'+str(3)]
     frameCam4 =  online_frames['cam'+str(4)]
 
-    #Set offline clusters
     if frame_counter == 0:
         path = 'ass2/data/'
-
+        #Read specific frames 
+        #For cam1,2,4 first frame is good enough
         capCam1 = cv2.VideoCapture(path + 'cam1/video.avi')
         capCam2 = cv2.VideoCapture(path + 'cam2/video.avi')
         capCam3 = cv2.VideoCapture(path + 'cam3/video.avi')
         capCam4 = cv2.VideoCapture(path + 'cam4/video.avi')
 
-        capCam1.set(1,580)
-        ret1, frameCam1 = capCam1.read()
+        capCam1.set(1,0)
+        _, frameCam1 = capCam1.read()
         capCam2.set(1,0)
-        ret2, frameCam2 = capCam2.read()
+        _, frameCam2 = capCam2.read()
         #Frame 1200 seems the best for cam3 only
         capCam3.set(1,1200)
-        ret3, frameCam3 = capCam3.read()
-        capCam4.set(1,900)
-        ret4, frameCam4 = capCam4.read()
+        _, frameCam3 = capCam3.read()
+        capCam4.set(1,0)
+        _, frameCam4 = capCam4.read()
 
     #Color array used for the comparison step
     colors = []
 
-    #Calculate clusters distance and angle to camera
-    cam_good_view = []
-    anglesPView = []
+    #Calculate clusters distance to camera
     distancesPView = []
-    skip = False
-    cam_positions, cam_colors = get_cam_positions()
+    cam_positions, _ = get_cam_positions()
     for i in range(4):
-        angles = []
         distances = []
         for j in range(4):
             cam2Dx = cam_positions[i][0]
             cam2Dz = cam_positions[i][2]
             cam2D = [cam2Dx,cam2Dz]
             cluster2D = centers[j]
-            angle = angle_between(cam2D, cluster2D)
             dist = math.dist(cam2D,cluster2D)
-            angles.append(angle)
             distances.append(dist)
-        anglesPView.append(angles)
         distancesPView.append(distances)
 
     #Check if cluster is occluded
-    #if two clusters share a similar angle to the camera
+    #if two clusters have a low angle to the camera
     #   THEN: if one cluster is closer to the camera than the other.
+    cam_good_view = []
     for k in range(4):
         view_good = []
         for i in range(4):
             is_visible = True
-            for j in range(i+1,4):
-                maximum = max(anglesPView[k][i], anglesPView[k][j])
-                minimum = min(anglesPView[k][i], anglesPView[k][j])
-                diff = maximum - minimum
+            for j in range(4):
+                if i == j:
+                    continue
+                cam2D = [cam_positions[k][0],cam_positions[k][2]]
+                cluster2DF = centers[i]
+                cluster2DS = centers[j]
+                diff = find_angle(cluster2DF, cluster2DS, cam2D)
+                #print(diff)
                 if diff < 5:
                     if distancesPView[k][i] > distancesPView[k][j]:
                         is_visible = False
@@ -255,14 +265,9 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
                 person3[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
             elif labels[i] == 3:
                 person4[pixeldata[i][j][1],pixeldata[i][j][0]] = 255
-        # cv2.imshow('p1', person1)
-        # cv2.imshow('p2', person2)
-        # cv2.imshow('p3', person3)
-        # cv2.imshow('p4', person4)
-        # cv2.waitKey(0)
         view_array.append([person1,person2,person3,person4])
         
-    #histogram parameters
+    #Histogram parameters
     histSize = 16
     histRange = (1, 256)
     accumulate = False
@@ -316,9 +321,9 @@ def construct_models(labels , pixeldata, voxels, centers, online_frames):
                 #If the color model is occluded don't calculate it and return only a 0.
                 if cam_good_view[k][i] == True:
                 #----------------------------------------------
-                    hVal = cv2.compareHist(list_view_histograms[1][i][0],list_offline_histograms[1][j][0],0)
-                    sVal = cv2.compareHist(list_view_histograms[1][i][1],list_offline_histograms[1][j][1],0)
-                    vVal = cv2.compareHist(list_view_histograms[1][i][2],list_offline_histograms[1][j][2],0)
+                    hVal = cv2.compareHist(list_view_histograms[k][i][0],list_offline_histograms[k][j][0],0)
+                    sVal = cv2.compareHist(list_view_histograms[k][i][1],list_offline_histograms[k][j][1],0)
+                    vVal = cv2.compareHist(list_view_histograms[k][i][2],list_offline_histograms[k][j][2],0)
                 #-----------------------------------------------
                 newVal = hVal+sVal+vVal
                 match_array.append([i,newVal,j])
